@@ -50,6 +50,7 @@ func NewServer(certsDir string, dockerWatch bool) *Server {
 		TLSConfig: &tls.Config{
 			GetCertificate: certManager.GetCertificate,
 		},
+		TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler)),
 	}
 
 	return &Server{
