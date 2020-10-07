@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"log"
 	"os"
 	"strings"
 	"sync"
@@ -60,6 +61,10 @@ func (c *Config) ReadFromFile(filename string) error {
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		items := strings.SplitN(scanner.Text(), "->", 2)
+		if len(items) < 2 {
+			log.Println("bad config line:", scanner.Text())
+			continue
+		}
 		hostname := strings.TrimSpace(items[0])
 		target := strings.TrimSpace(items[1])
 		c.proxies[hostname] = target
