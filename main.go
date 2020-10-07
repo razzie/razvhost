@@ -2,24 +2,22 @@ package main
 
 import (
 	"fmt"
-	docker "github.com/fsouza/go-dockerclient"
+	"time"
 )
 
 func main() {
-	client, err := docker.NewClientFromEnv()
+	d, err := NewDockerWatch()
 	if err != nil {
 		panic(err)
 	}
 
-	lis := make(chan *docker.APIEvents, 1)
-	err = client.AddEventListener(lis)
-	if err != nil {
-		panic(err)
-	}
+	for {
+		time.Sleep(time.Second * 5)
 
-	for e := range lis {
-		fmt.Println(e)
+		fmt.Println("entries:")
+		fmt.Println("--------")
+		for hostname, target := range d.GetProxies() {
+			fmt.Println(hostname, " -> ", target)
+		}
 	}
-
-	fmt.Println("end")
 }
