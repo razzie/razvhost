@@ -17,7 +17,7 @@ func main() {
 		fmt.Println("entries:")
 		fmt.Println("--------")
 		for hostname, target := range d.GetProxies() {
-			fmt.Println(hostname, " -> ", target)
+			fmt.Println(hostname, "->", target)
 		}
 	}
 }

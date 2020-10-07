@@ -87,7 +87,7 @@ func (d *DockerWatch) handleContainer(id string, start bool) (bool, error) {
 			return false, fmt.Errorf("no host port?")
 		}
 
-		d.addProxy(virtHost, fmt.Sprintf("http://%s:%s", target.HostIP, target.HostPort))
+		d.addProxy(virtHost, fmt.Sprintf("http://localhost:%s", target.HostPort))
 	} else {
 		d.removeProxy(virtHost)
 	}
