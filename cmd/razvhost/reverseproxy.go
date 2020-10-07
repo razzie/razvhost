@@ -90,9 +90,9 @@ func (p *ReverseProxy) getProxy(hostname string) http.Handler {
 }
 
 func (p *ReverseProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	proxy := p.getProxy(r.URL.Hostname())
+	proxy := p.getProxy(r.Host)
 	if proxy == nil {
-		http.Error(w, "Unknown hostname in request", http.StatusNotFound)
+		http.Error(w, "Unknown hostname in request: "+r.Host, http.StatusNotFound)
 		return
 	}
 	proxy.ServeHTTP(w, r)
