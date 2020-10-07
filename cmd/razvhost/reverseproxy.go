@@ -36,14 +36,14 @@ func makeDirector(target *url.URL) func(req *http.Request) {
 // ReverseProxy ...
 type ReverseProxy struct {
 	mtx        sync.Mutex
-	proxies    map[string]*httputil.ReverseProxy
+	proxies    map[string]http.Handler
 	proxyLists []ProxyList
 }
 
 // NewReverseProxy ...
 func NewReverseProxy(l ...ProxyList) *ReverseProxy {
 	return &ReverseProxy{
-		proxies:    make(map[string]*httputil.ReverseProxy),
+		proxies:    make(map[string]http.Handler),
 		proxyLists: l,
 	}
 }
@@ -64,7 +64,7 @@ func (p *ReverseProxy) getTargetURL(hostname string) *url.URL {
 	return nil
 }
 
-func (p *ReverseProxy) getProxy(hostname string) *httputil.ReverseProxy {
+func (p *ReverseProxy) getProxy(hostname string) http.Handler {
 	p.mtx.Lock()
 	defer p.mtx.Unlock()
 
@@ -74,9 +74,17 @@ func (p *ReverseProxy) getProxy(hostname string) *httputil.ReverseProxy {
 		if targetURL == nil {
 			return nil
 		}
-		proxy = httputil.NewSingleHostReverseProxy(targetURL)
-		proxy.Director = makeDirector(targetURL)
-		p.proxies[hostname] = proxy
+		switch targetURL.Scheme {
+		case "file":
+			proxy = http.FileServer(http.Dir(targetURL.Path))
+		default:
+			rproxy := httputil.NewSingleHostReverseProxy(targetURL)
+			rproxy.Director = makeDirector(targetURL)
+			proxy = rproxy
+		}
+		if proxy != nil {
+			p.proxies[hostname] = proxy
+		}
 	}
 	return proxy
 }
