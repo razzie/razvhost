@@ -40,8 +40,9 @@ func NewServer(certsDir string, dockerWatch bool) *Server {
 	}
 
 	certManager := &autocert.Manager{
-		Prompt: autocert.AcceptTOS,
-		Cache:  autocert.DirCache(certsDir),
+		Prompt:     autocert.AcceptTOS,
+		Cache:      autocert.DirCache(certsDir),
+		HostPolicy: proxies.ValidateHost,
 	}
 
 	server := &http.Server{

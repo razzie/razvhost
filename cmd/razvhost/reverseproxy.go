@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -87,6 +89,15 @@ func (p *ReverseProxy) getProxy(hostname string) http.Handler {
 		}
 	}
 	return proxy
+}
+
+// ValidateHost implements autocert.HostPolicy
+func (p *ReverseProxy) ValidateHost(ctx context.Context, host string) error {
+	url := p.getTargetURL(host)
+	if url == nil {
+		return fmt.Errorf("unknown hostname: %s", host)
+	}
+	return nil
 }
 
 func (p *ReverseProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
