@@ -8,6 +8,13 @@ import (
 	"golang.org/x/crypto/acme/autocert"
 )
 
+// ServerConfig ...
+type ServerConfig struct {
+	CertsDir          string
+	WatchDockerEvents bool
+	EnableHTTP2       bool
+}
+
 // Server ...
 type Server struct {
 	config      *Config
@@ -19,7 +26,7 @@ type Server struct {
 }
 
 // NewServer ...
-func NewServer(certsDir string, dockerWatch bool) *Server {
+func NewServer(cfg *ServerConfig) *Server {
 	config := NewConfig()
 	err := config.ReadFromFile("config")
 	if err != nil {
@@ -27,7 +34,7 @@ func NewServer(certsDir string, dockerWatch bool) *Server {
 	}
 
 	var docker *DockerWatch
-	if dockerWatch {
+	if cfg.WatchDockerEvents {
 		docker, err = NewDockerWatch()
 		if err != nil {
 			log.Println(err)
@@ -41,7 +48,7 @@ func NewServer(certsDir string, dockerWatch bool) *Server {
 
 	certManager := &autocert.Manager{
 		Prompt:     autocert.AcceptTOS,
-		Cache:      autocert.DirCache(certsDir),
+		Cache:      autocert.DirCache(cfg.CertsDir),
 		HostPolicy: proxies.ValidateHost,
 	}
 
@@ -51,14 +58,17 @@ func NewServer(certsDir string, dockerWatch bool) *Server {
 		TLSConfig: &tls.Config{
 			GetCertificate: certManager.GetCertificate,
 		},
-		TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler)),
+	}
+
+	if !cfg.EnableHTTP2 {
+		server.TLSNextProto = make(map[string]func(*http.Server, *tls.Conn, http.Handler))
 	}
 
 	return &Server{
 		config:      config,
 		docker:      docker,
 		proxies:     proxies,
-		certsDir:    certsDir,
+		certsDir:    cfg.CertsDir,
 		certManager: certManager,
 		server:      server,
 	}
