@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 
 	docker "github.com/fsouza/go-dockerclient"
@@ -87,9 +88,13 @@ func (d *DockerWatch) handleContainer(id string, start bool) (bool, error) {
 			return false, fmt.Errorf("no host port?")
 		}
 
-		d.addProxy(virtHost, fmt.Sprintf("http://localhost:%s", target.HostPort))
+		for _, virtHost := range strings.Fields(virtHost) {
+			d.addProxy(virtHost, fmt.Sprintf("http://localhost:%s", target.HostPort))
+		}
 	} else {
-		d.removeProxy(virtHost)
+		for _, virtHost := range strings.Fields(virtHost) {
+			d.removeProxy(virtHost)
+		}
 	}
 
 	return true, nil
