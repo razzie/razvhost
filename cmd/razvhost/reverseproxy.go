@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
-	"path"
 	"sync"
 )
 
@@ -31,7 +30,6 @@ func makeDirector(target *url.URL) func(req *http.Request) {
 		req.Header.Add("X-Forwarded-For", req.RemoteAddr)
 		req.URL.Scheme = target.Scheme
 		req.URL.Host = target.Host
-		req.URL.Path = path.Join(req.URL.Path, target.Path)
 	}
 }
 
@@ -79,10 +77,15 @@ func (p *ReverseProxy) getProxy(hostname string) http.Handler {
 		switch targetURL.Scheme {
 		case "file":
 			proxy = http.FileServer(http.Dir(targetURL.Path))
-		default:
+		case "http", "https":
+			if len(targetURL.Path) > 1 {
+				panic(fmt.Errorf("paths are unsupported in http/https target URLs (%v)", targetURL))
+			}
 			rproxy := httputil.NewSingleHostReverseProxy(targetURL)
 			rproxy.Director = makeDirector(targetURL)
 			proxy = rproxy
+		default:
+			panic(fmt.Errorf("unknown target URL scheme: %s", targetURL.Scheme))
 		}
 		if proxy != nil {
 			p.proxies[hostname] = proxy
