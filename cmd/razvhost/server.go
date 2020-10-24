@@ -38,6 +38,7 @@ func NewServer(cfg *ServerConfig) *Server {
 			exampleConfig := []string{
 				"example.com example2.com -> http://localhost:8080",
 				"fileexample.com -> file:///var/www/public/",
+				"redirect.com -> redirect://github.com",
 			}
 			ioutil.WriteFile("config", []byte(strings.Join(exampleConfig, "\n")), 0777)
 		} else {
