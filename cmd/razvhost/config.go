@@ -65,9 +65,11 @@ func (c *Config) ReadFromFile(filename string) error {
 			log.Println("bad config line:", scanner.Text())
 			continue
 		}
-		hostname := strings.TrimSpace(items[0])
+		hostnames := strings.Fields(items[0])
 		target := strings.TrimSpace(items[1])
-		c.proxies[hostname] = target
+		for _, hostname := range hostnames {
+			c.proxies[hostname] = target
+		}
 	}
 
 	return scanner.Err()
