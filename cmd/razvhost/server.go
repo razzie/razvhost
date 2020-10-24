@@ -2,8 +2,11 @@ package main
 
 import (
 	"crypto/tls"
+	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
+	"strings"
 
 	"golang.org/x/crypto/acme/autocert"
 )
@@ -30,7 +33,16 @@ func NewServer(cfg *ServerConfig) *Server {
 	config := NewConfig()
 	err := config.ReadFromFile("config")
 	if err != nil {
-		log.Println(err)
+		if os.IsNotExist(err) {
+			log.Println("creating demo config")
+			exampleConfig := []string{
+				"example.com example2.com -> http://localhost:8080",
+				"fileexample.com -> file:///var/www/public/",
+			}
+			ioutil.WriteFile("config", []byte(strings.Join(exampleConfig, "\n")), 0777)
+		} else {
+			log.Println(err)
+		}
 	}
 
 	var docker *DockerWatch
