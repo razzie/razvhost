@@ -124,5 +124,6 @@ type redirectHandler struct {
 func (redir *redirectHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	target := redir.targetURL
 	target.Scheme = r.URL.Scheme
+	target.Path = r.URL.Path
 	http.Redirect(w, r, target.String(), http.StatusSeeOther)
 }
