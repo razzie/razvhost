@@ -58,7 +58,7 @@ func (p *ReverseProxy) getProxy(hostname string) http.Handler {
 				panic(fmt.Errorf("paths are unsupported in http/https target URLs (%v)", targetURL))
 			}
 			rproxy := httputil.NewSingleHostReverseProxy(targetURL)
-			rproxy.Director = makeDirector(targetURL)
+			rproxy.Director = newDirector(targetURL)
 			proxy = rproxy
 		case "redirect":
 			if len(targetURL.Path) > 1 {
@@ -93,25 +93,23 @@ func (p *ReverseProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	proxy.ServeHTTP(w, r)
 }
 
-func makeDirector(target *url.URL) func(req *http.Request) {
-	return func(req *http.Request) {
-		checklist := []string{
-			"x-client-ip",         // Standard headers used by Amazon EC2, Heroku, and others.
-			"x-forwarded-for",     // Load-balancers (AWS ELB) or proxies.
-			"cf-connecting-ip",    // @see https://support.cloudflare.com/hc/en-us/articles/200170986-How-does-Cloudflare-handle-HTTP-Request-headers-
-			"fastly-client-ip",    // Fastly and Firebase hosting header (When forwared to cloud function)
-			"true-client-ip",      // Akamai and Cloudflare: True-Client-IP.
-			"x-real-ip",           // Default nginx proxy/fcgi; alternative to x-forwarded-for, used by some proxies.
-			"x-cluster-client-ip", // (Rackspace LB and Riverbed's Stingray) http://www.rackspace.com/knowledge_center/article/controlling-access-to-linux-cloud-sites-based-on-the-client-ip-address
-			"x-forwarded",
-			"forwarded-for",
-			"forwarded",
-		}
+var junkProxyHeaders = []string{
+	"x-client-ip",
+	"cf-connecting-ip",
+	"fastly-client-ip",
+	"true-client-ip",
+	"x-real-ip",
+	"x-cluster-client-ip",
+	"x-forwarded",
+	"forwarded-for",
+	"forwarded",
+}
 
-		for _, h := range checklist {
+func newDirector(target *url.URL) func(req *http.Request) {
+	return func(req *http.Request) {
+		for _, h := range junkProxyHeaders {
 			req.Header.Del(h)
 		}
-		req.Header.Add("X-Forwarded-For", req.RemoteAddr)
 		req.URL.Scheme = target.Scheme
 		req.URL.Host = target.Host
 	}
