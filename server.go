@@ -21,89 +21,92 @@ type ServerConfig struct {
 
 // Server ...
 type Server struct {
-	config      *Config
-	docker      *DockerWatch
+	config      ServerConfig
 	proxies     *ReverseProxy
-	certsDir    string
 	certManager *autocert.Manager
-	server      *http.Server
 }
 
 // NewServer ...
 func NewServer(cfg *ServerConfig) *Server {
-	var config *Config
-	if len(cfg.ConfigFile) > 0 {
-		config = NewConfig()
-		err := config.ReadFromFile(cfg.ConfigFile)
-		if err != nil {
-			if os.IsNotExist(err) {
-				exampleConfig := []string{
-					"example.com example2.com -> http://localhost:8080",
-					"fileexample.com -> file:///var/www/public/",
-					"redirect.com -> redirect://github.com",
-				}
-				if err := ioutil.WriteFile(cfg.ConfigFile, []byte(strings.Join(exampleConfig, "\n")), 0777); err != nil {
-					log.Println("created demo config:", cfg.ConfigFile)
-				}
-			} else {
-				log.Println(err)
-			}
-		}
-	}
-
-	var docker *DockerWatch
-	if cfg.WatchDockerEvents {
-		var err error
-		docker, err = NewDockerWatch()
-		if err != nil {
-			log.Println(err)
-		}
-	}
-
 	proxies := NewReverseProxy()
-	if config != nil {
-		proxies.AddProxyList(config)
-	}
-	if docker != nil {
-		proxies.AddProxyList(docker)
-	}
-
 	certManager := &autocert.Manager{
 		Prompt:     autocert.AcceptTOS,
 		Cache:      autocert.DirCache(cfg.CertsDir),
 		HostPolicy: proxies.ValidateHost,
 	}
-
-	server := &http.Server{
-		Addr:    ":443",
-		Handler: proxies,
-		TLSConfig: &tls.Config{
-			GetCertificate: certManager.GetCertificate,
-		},
-	}
-
-	if !cfg.EnableHTTP2 {
-		server.TLSNextProto = make(map[string]func(*http.Server, *tls.Conn, http.Handler))
-	}
-
-	return &Server{
-		config:      config,
-		docker:      docker,
+	srv := &Server{
+		config:      *cfg,
 		proxies:     proxies,
-		certsDir:    cfg.CertsDir,
 		certManager: certManager,
-		server:      server,
 	}
+	if len(cfg.ConfigFile) > 0 {
+		if err := srv.loadConfig(); err != nil {
+			log.Println(err)
+		}
+	}
+	if cfg.WatchDockerEvents {
+		if err := srv.watchDockerEvents(); err != nil {
+			log.Println(err)
+		}
+	}
+	return srv
 }
 
 // Serve ...
 func (s *Server) Serve() error {
+	server := &http.Server{
+		Addr:    ":443",
+		Handler: s.proxies,
+		TLSConfig: &tls.Config{
+			GetCertificate: s.certManager.GetCertificate,
+		},
+	}
+	if !s.config.EnableHTTP2 {
+		server.TLSNextProto = make(map[string]func(*http.Server, *tls.Conn, http.Handler))
+	}
+
 	errChan := make(chan error, 1)
 	go func() {
 		errChan <- http.ListenAndServe(":80", s.certManager.HTTPHandler(nil))
 	}()
 	go func() {
-		errChan <- s.server.ListenAndServeTLS("", "")
+		errChan <- server.ListenAndServeTLS("", "")
 	}()
 	return <-errChan
+}
+
+func (s *Server) loadConfig() error {
+	if len(s.config.ConfigFile) == 0 {
+		return nil
+	}
+
+	config := NewConfig()
+	err := config.ReadFromFile(s.config.ConfigFile)
+	if err != nil {
+		if os.IsNotExist(err) {
+			exampleConfig := []string{
+				"example.com example2.com -> http://localhost:8080",
+				"fileexample.com -> file:///var/www/public/",
+				"redirect.com -> redirect://github.com",
+			}
+			if err := ioutil.WriteFile(s.config.ConfigFile, []byte(strings.Join(exampleConfig, "\n")), 0777); err != nil {
+				log.Println("created demo config:", s.config.ConfigFile)
+			}
+			return nil
+		}
+		return err
+	}
+
+	s.proxies.AddProxyList(config)
+	return nil
+}
+
+func (s *Server) watchDockerEvents() error {
+	docker, err := NewDockerWatch()
+	if err != nil {
+		return err
+	}
+
+	s.proxies.AddProxyList(docker)
+	return nil
 }
