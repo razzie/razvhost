@@ -60,9 +60,13 @@ func (c *Config) ReadFromFile(filename string) error {
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		items := strings.SplitN(scanner.Text(), "->", 2)
+		line := strings.TrimSpace(scanner.Text())
+		if strings.HasPrefix(line, "#") {
+			continue
+		}
+		items := strings.SplitN(line, "->", 2)
 		if len(items) < 2 {
-			log.Println("bad config line:", scanner.Text())
+			log.Println("bad config line:", line)
 			continue
 		}
 		hostnames := strings.Fields(items[0])

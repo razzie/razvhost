@@ -85,6 +85,7 @@ func (s *Server) loadConfig() error {
 	if err != nil {
 		if os.IsNotExist(err) {
 			exampleConfig := []string{
+				"# hostnames -> mode://url",
 				"example.com example2.com -> http://localhost:8080",
 				"fileexample.com -> file:///var/www/public/",
 				"redirect.com -> redirect://github.com",
