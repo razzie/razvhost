@@ -13,6 +13,7 @@ import (
 
 // ServerConfig ...
 type ServerConfig struct {
+	ConfigFile        string
 	CertsDir          string
 	WatchDockerEvents bool
 	EnableHTTP2       bool
@@ -30,31 +31,39 @@ type Server struct {
 
 // NewServer ...
 func NewServer(cfg *ServerConfig) *Server {
-	config := NewConfig()
-	err := config.ReadFromFile("config")
-	if err != nil {
-		if os.IsNotExist(err) {
-			log.Println("creating demo config")
-			exampleConfig := []string{
-				"example.com example2.com -> http://localhost:8080",
-				"fileexample.com -> file:///var/www/public/",
-				"redirect.com -> redirect://github.com",
+	var config *Config
+	if len(cfg.ConfigFile) > 0 {
+		config = NewConfig()
+		err := config.ReadFromFile(cfg.ConfigFile)
+		if err != nil {
+			if os.IsNotExist(err) {
+				exampleConfig := []string{
+					"example.com example2.com -> http://localhost:8080",
+					"fileexample.com -> file:///var/www/public/",
+					"redirect.com -> redirect://github.com",
+				}
+				if err := ioutil.WriteFile(cfg.ConfigFile, []byte(strings.Join(exampleConfig, "\n")), 0777); err != nil {
+					log.Println("created demo config:", cfg.ConfigFile)
+				}
+			} else {
+				log.Println(err)
 			}
-			ioutil.WriteFile("config", []byte(strings.Join(exampleConfig, "\n")), 0777)
-		} else {
-			log.Println(err)
 		}
 	}
 
 	var docker *DockerWatch
 	if cfg.WatchDockerEvents {
+		var err error
 		docker, err = NewDockerWatch()
 		if err != nil {
 			log.Println(err)
 		}
 	}
 
-	proxies := NewReverseProxy(config)
+	proxies := NewReverseProxy()
+	if config != nil {
+		proxies.AddProxyList(config)
+	}
 	if docker != nil {
 		proxies.AddProxyList(docker)
 	}
