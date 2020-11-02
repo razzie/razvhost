@@ -2,6 +2,8 @@ package main
 
 import (
 	"flag"
+
+	"github.com/razzie/razvhost"
 )
 
 // command line args
@@ -21,13 +23,13 @@ func init() {
 }
 
 func main() {
-	cfg := &ServerConfig{
+	cfg := &razvhost.ServerConfig{
 		ConfigFile:        ConfigFile,
 		CertsDir:          CertsDir,
 		WatchDockerEvents: WatchDockerEvents,
 		EnableHTTP2:       EnableHTTP2,
 	}
-	if err := NewServer(cfg).Serve(); err != nil {
+	if err := razvhost.NewServer(cfg).Serve(); err != nil {
 		panic(err)
 	}
 }

@@ -1,4 +1,4 @@
-package main
+package razvhost
 
 // ProxyList ...
 type ProxyList interface {
