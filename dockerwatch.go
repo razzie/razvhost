@@ -40,18 +40,19 @@ func NewDockerWatch() (*DockerWatch, error) {
 
 func (d *DockerWatch) watch(lis <-chan *docker.APIEvents) {
 	for e := range lis {
-		if e.Type == "container" {
-			switch e.Action {
-			case "start":
-				_, err := d.handleContainer(e.Actor.ID, true)
-				if err != nil {
-					log.Println(err)
-				}
-			case "stop":
-				_, err := d.handleContainer(e.Actor.ID, false)
-				if err != nil {
-					log.Println(err)
-				}
+		if e.Type != "container" {
+			continue
+		}
+		switch e.Action {
+		case "start":
+			_, err := d.handleContainer(e.Actor.ID, true)
+			if err != nil {
+				log.Println(err)
+			}
+		case "stop":
+			_, err := d.handleContainer(e.Actor.ID, false)
+			if err != nil {
+				log.Println(err)
 			}
 		}
 	}
