@@ -24,7 +24,11 @@ func (m *mux) add(path string, handler http.Handler, target url.URL) {
 	entry := m.entryMap[path]
 	if entry != nil {
 		entry.add(handler, target)
+		return
 	}
+
+	entry = &muxEntry{path: path}
+	entry.add(handler, target)
 
 	for i, other := range m.entries {
 		if len(path) > len(other.path) {
