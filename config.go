@@ -10,12 +10,12 @@ import (
 )
 
 // ExampleConfig ...
-var ExampleConfig = strings.Join([]string{
-	"# comment",
-	"example.com example2.com -> http://localhost:8080",
-	"fileexample.com -> file:///var/www/public/",
-	"redirect.com -> redirect://github.com",
-}, "\n")
+var ExampleConfig = `# comment
+example.com alias.com -> http://localhost:8080
+example.com/files -> file:///var/www/public/
+loadbalance.com -> http://localhost:8081 http://localhost:8082
+fileserver.com -> file:///var/www/public/
+redirect.com -> redirect://github.com`
 
 // ReadConfigFile ...
 func ReadConfigFile(filename string) ([]ProxyEvent, error) {
