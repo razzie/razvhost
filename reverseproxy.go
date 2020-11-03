@@ -18,6 +18,16 @@ type ProxyEvent struct {
 	Up       bool
 }
 
+func (e ProxyEvent) String() string {
+	str := e.Hostname + " -> " + e.Target.String()
+	if e.Up {
+		str += " [UP]"
+	} else {
+		str += " [DOWN]"
+	}
+	return str
+}
+
 // ReverseProxy ...
 type ReverseProxy struct {
 	mtx     sync.Mutex
@@ -51,6 +61,7 @@ func (p *ReverseProxy) Process(events []ProxyEvent) {
 }
 
 func (p *ReverseProxy) processEvent(e ProxyEvent) {
+	log.Println("proxy event:", e.String())
 	host, path := splitHostnameAndPath(e.Hostname)
 
 	if !e.Up {
