@@ -91,6 +91,8 @@ func (p *ReverseProxy) ValidateHost(ctx context.Context, host string) error {
 }
 
 func (p *ReverseProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	log.Println(r.RemoteAddr, "->", r.Method, r.Host, r.RequestURI)
+
 	p.mtx.Lock()
 	m, ok := p.proxies[r.Host]
 	p.mtx.Unlock()

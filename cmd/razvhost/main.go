@@ -2,6 +2,8 @@ package main
 
 import (
 	"flag"
+	"log"
+	"os"
 
 	"github.com/razzie/razvhost"
 )
@@ -20,6 +22,8 @@ func init() {
 	flag.BoolVar(&WatchDockerEvents, "docker", false, "Watch Docker events to find containers with VIRTUAL_HOST")
 	flag.BoolVar(&EnableHTTP2, "http2", false, "Enable HTTP2 requests towards internal ports")
 	flag.Parse()
+
+	log.SetOutput(os.Stdout)
 }
 
 func main() {
