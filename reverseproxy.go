@@ -3,94 +3,106 @@ package razvhost
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strings"
 	"sync"
 )
 
+// ProxyEvent ...
+type ProxyEvent struct {
+	Hostname string
+	Target   url.URL
+	Up       bool
+}
+
 // ReverseProxy ...
 type ReverseProxy struct {
-	mtx        sync.Mutex
-	proxies    map[string]http.Handler
-	proxyLists []ProxyList
+	mtx     sync.Mutex
+	proxies map[string]*mux
 }
 
-// NewReverseProxy ...
-func NewReverseProxy(l ...ProxyList) *ReverseProxy {
-	return &ReverseProxy{
-		proxies:    make(map[string]http.Handler),
-		proxyLists: l,
-	}
-}
-
-// AddProxyList ...
-func (p *ReverseProxy) AddProxyList(l ProxyList) {
-	p.proxyLists = append(p.proxyLists, l)
-}
-
-func (p *ReverseProxy) getTargetURL(hostname string) *url.URL {
-	for _, proxyList := range p.proxyLists {
-		target, ok := proxyList.GetProxy(hostname)
-		if ok {
-			targetURL, _ := url.Parse(target)
-			return targetURL
-		}
-	}
-	return nil
-}
-
-func (p *ReverseProxy) getProxy(hostname string) http.Handler {
+// Listen listens to proxy events
+func (p *ReverseProxy) Listen(events <-chan ProxyEvent) {
 	p.mtx.Lock()
-	defer p.mtx.Unlock()
-
-	proxy := p.proxies[hostname]
-	if proxy == nil {
-		targetURL := p.getTargetURL(hostname)
-		if targetURL == nil {
-			return nil
-		}
-		switch targetURL.Scheme {
-		case "file":
-			proxy = http.FileServer(http.Dir(targetURL.Path))
-		case "http", "https":
-			if len(targetURL.Path) > 1 {
-				panic(fmt.Errorf("paths are unsupported in http/https target URLs (%v)", targetURL))
-			}
-			rproxy := httputil.NewSingleHostReverseProxy(targetURL)
-			rproxy.Director = newDirector(targetURL)
-			proxy = rproxy
-		case "redirect":
-			if len(targetURL.Path) > 1 {
-				panic(fmt.Errorf("paths are unsupported in redirect target URLs (%v)", targetURL))
-			}
-			proxy = &redirectHandler{targetURL: *targetURL}
-		default:
-			panic(fmt.Errorf("unknown target URL scheme: %s", targetURL.Scheme))
-		}
-		if proxy != nil {
-			p.proxies[hostname] = proxy
-		}
+	if p.proxies == nil {
+		p.proxies = make(map[string]*mux)
 	}
-	return proxy
+	p.mtx.Unlock()
+
+	for e := range events {
+		p.processEvent(e)
+	}
+}
+
+// Process processes a list of proxy events
+func (p *ReverseProxy) Process(events []ProxyEvent) {
+	p.mtx.Lock()
+	if p.proxies == nil {
+		p.proxies = make(map[string]*mux)
+	}
+	p.mtx.Unlock()
+
+	for _, e := range events {
+		p.processEvent(e)
+	}
+}
+
+func (p *ReverseProxy) processEvent(e ProxyEvent) {
+	host, path := splitHostnameAndPath(e.Hostname)
+
+	if !e.Up {
+		p.mtx.Lock()
+		m := p.proxies[host]
+		p.mtx.Unlock()
+		if m != nil {
+			m.remove(path, e.Target)
+		}
+		return
+	}
+
+	_, handler, err := newHandler(e.Hostname, e.Target)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	p.mtx.Lock()
+	m := p.proxies[host]
+	if m == nil {
+		m = new(mux)
+		p.proxies[host] = m
+	}
+	p.mtx.Unlock()
+
+	m.add(path, handler, e.Target)
 }
 
 // ValidateHost implements autocert.HostPolicy
 func (p *ReverseProxy) ValidateHost(ctx context.Context, host string) error {
-	url := p.getTargetURL(host)
-	if url == nil {
+	p.mtx.Lock()
+	defer p.mtx.Unlock()
+	if _, ok := p.proxies[host]; !ok {
 		return fmt.Errorf("unknown hostname: %s", host)
 	}
 	return nil
 }
 
 func (p *ReverseProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	proxy := p.getProxy(r.Host)
-	if proxy == nil {
-		http.Error(w, "Unknown hostname in request: "+r.Host, http.StatusNotFound)
+	p.mtx.Lock()
+	m, ok := p.proxies[r.Host]
+	p.mtx.Unlock()
+	if !ok {
+		http.Error(w, "Unknown hostname in request: "+r.Host, http.StatusForbidden)
 		return
 	}
-	proxy.ServeHTTP(w, r)
+	if handler := m.handler(r.URL.Path); handler != nil {
+		handler.ServeHTTP(w, r)
+		return
+	}
+	http.Error(w, "Cannot serve path: "+r.URL.Path, http.StatusForbidden)
 }
 
 var junkProxyHeaders = []string{
@@ -105,7 +117,7 @@ var junkProxyHeaders = []string{
 	"forwarded",
 }
 
-func newDirector(target *url.URL) func(req *http.Request) {
+func newDirector(target url.URL) func(req *http.Request) {
 	return func(req *http.Request) {
 		for _, h := range junkProxyHeaders {
 			req.Header.Del(h)
@@ -124,4 +136,42 @@ func (redir *redirectHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	target.Scheme = r.URL.Scheme
 	target.Path = r.URL.Path
 	http.Redirect(w, r, target.String(), http.StatusSeeOther)
+}
+
+func splitHostnameAndPath(hostname string) (string, string) {
+	i := strings.Index(hostname, "/")
+	if i == -1 {
+		return hostname, ""
+	}
+	return hostname[:i], hostname[i:]
+}
+
+func newHandler(hostname string, target url.URL) (path string, handler http.Handler, err error) {
+	hostname, path = splitHostnameAndPath(hostname)
+
+	switch target.Scheme {
+	case "file":
+		handler = http.FileServer(http.Dir(target.Path))
+
+	case "http", "https":
+		if len(target.Path) > 1 {
+			err = fmt.Errorf("paths are unsupported in http/https target URLs (%v)", target)
+			return
+		}
+		rproxy := httputil.NewSingleHostReverseProxy(&target)
+		rproxy.Director = newDirector(target)
+		handler = rproxy
+
+	case "redirect":
+		if len(target.Path) > 1 {
+			err = fmt.Errorf("paths are unsupported in redirect target URLs (%v)", target)
+			return
+		}
+		handler = &redirectHandler{targetURL: target}
+
+	default:
+		err = fmt.Errorf("unknown target URL scheme: %s", target.Scheme)
+	}
+
+	return
 }

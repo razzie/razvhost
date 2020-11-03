@@ -4,130 +4,127 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/url"
 	"strings"
-	"sync"
 
 	docker "github.com/fsouza/go-dockerclient"
 )
 
 // DockerWatch ...
 type DockerWatch struct {
-	mtx     sync.Mutex
-	client  *docker.Client
-	proxies map[string]string
+	client *docker.Client
 }
 
-// NewDockerWatch ...
+// NewDockerWatch returns a new DockerWatch
 func NewDockerWatch() (*DockerWatch, error) {
 	client, err := docker.NewClientFromEnv()
 	if err != nil {
 		return nil, err
 	}
 
-	lis := make(chan *docker.APIEvents, 1)
-	err = client.AddEventListener(lis)
+	d := &DockerWatch{
+		client: client,
+	}
+	return d, nil
+}
+
+// GetActiveContainers returns up proxy events for active containers
+func (d *DockerWatch) GetActiveContainers() ([]ProxyEvent, error) {
+	containers, err := d.client.ListContainers(docker.ListContainersOptions{})
 	if err != nil {
 		return nil, err
 	}
 
-	d := &DockerWatch{
-		client:  client,
-		proxies: make(map[string]string),
+	var results []ProxyEvent
+	for _, container := range containers {
+		events, err := d.getContainerEvents(container.ID, true)
+		if err != nil {
+			log.Println(err)
+			continue
+		}
+		results = append(results, events...)
 	}
-	go d.watch(lis)
-	return d, nil
+	return results, nil
 }
 
-func (d *DockerWatch) watch(lis <-chan *docker.APIEvents) {
-	for e := range lis {
+// GetProxyEvents returns a channel of proxy events
+func (d *DockerWatch) GetProxyEvents() (<-chan ProxyEvent, error) {
+	lis := make(chan *docker.APIEvents, 1)
+	err := d.client.AddEventListener(lis)
+	if err != nil {
+		return nil, err
+	}
+
+	events := make(chan ProxyEvent, 1)
+	go d.convertEvents(lis, events)
+	return events, nil
+}
+
+func (d *DockerWatch) convertEvents(in <-chan *docker.APIEvents, out chan<- ProxyEvent) {
+	for e := range in {
 		if e.Type != "container" {
 			continue
 		}
+		var events []ProxyEvent
+		var err error
 		switch e.Action {
 		case "start":
-			_, err := d.handleContainer(e.Actor.ID, true)
-			if err != nil {
-				log.Println(err)
-			}
+			events, err = d.getContainerEvents(e.Actor.ID, true)
 		case "stop":
-			_, err := d.handleContainer(e.Actor.ID, false)
-			if err != nil {
-				log.Println(err)
-			}
+			events, err = d.getContainerEvents(e.Actor.ID, false)
+		}
+		if err != nil {
+			log.Println(err)
+		}
+		for _, event := range events {
+			out <- event
 		}
 	}
+	close(out)
 }
 
-func (d *DockerWatch) handleContainer(id string, start bool) (bool, error) {
+func (d *DockerWatch) getContainerEvents(id string, start bool) ([]ProxyEvent, error) {
 	cont, err := d.client.InspectContainerWithOptions(docker.InspectContainerOptions{
 		Context: context.Background(),
 		ID:      id,
 	})
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 
 	env := docker.Env(cont.Config.Env)
 	virtHost := env.Get("VIRTUAL_HOST")
 	virtPort := env.Get("VIRTUAL_PORT")
 	if len(virtHost) == 0 {
-		return false, nil
+		return nil, nil
 	}
 	if len(virtPort) == 0 {
 		virtPort = "8080"
 	}
 
-	if start {
-		var target *docker.PortBinding
-		for port, bindings := range cont.NetworkSettings.Ports {
-			if port.Port() == virtPort && len(bindings) > 0 {
-				target = &bindings[0]
-				break
-			}
-		}
-		if target == nil {
-			return false, fmt.Errorf("no host port?")
-		}
-
-		for _, virtHost := range strings.Fields(virtHost) {
-			d.addProxy(virtHost, fmt.Sprintf("http://localhost:%s", target.HostPort))
-		}
-	} else {
-		for _, virtHost := range strings.Fields(virtHost) {
-			d.removeProxy(virtHost)
+	var target *docker.PortBinding
+	for port, bindings := range cont.NetworkSettings.Ports {
+		if port.Port() == virtPort && len(bindings) > 0 {
+			target = &bindings[0]
+			break
 		}
 	}
-
-	return true, nil
-}
-
-func (d *DockerWatch) addProxy(hostname, target string) {
-	d.mtx.Lock()
-	defer d.mtx.Unlock()
-	d.proxies[hostname] = target
-}
-
-func (d *DockerWatch) removeProxy(hostname string) {
-	d.mtx.Lock()
-	defer d.mtx.Unlock()
-	delete(d.proxies, hostname)
-}
-
-// GetProxy ...
-func (d *DockerWatch) GetProxy(hostname string) (string, bool) {
-	d.mtx.Lock()
-	defer d.mtx.Unlock()
-	target, ok := d.proxies[hostname]
-	return target, ok
-}
-
-// GetProxies ...
-func (d *DockerWatch) GetProxies() map[string]string {
-	proxies := make(map[string]string)
-	d.mtx.Lock()
-	defer d.mtx.Unlock()
-	for hostname, target := range d.proxies {
-		proxies[hostname] = target
+	if target == nil {
+		return nil, fmt.Errorf("no %q port bindings in container %q", virtPort, id)
 	}
-	return proxies
+	targetURL, err := url.Parse("http://localhost:" + target.HostPort)
+	if err != nil {
+		return nil, err
+	}
+
+	var events []ProxyEvent
+	for _, virtHost := range strings.Fields(virtHost) {
+		events = append(events, ProxyEvent{
+			Hostname: virtHost,
+			Target:   *targetURL,
+			Up:       start,
+		})
+	}
+
+	return events, nil
 }

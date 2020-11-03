@@ -6,7 +6,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"strings"
 
 	"golang.org/x/crypto/acme/autocert"
 )
@@ -28,7 +27,7 @@ type Server struct {
 
 // NewServer ...
 func NewServer(cfg *ServerConfig) *Server {
-	proxies := NewReverseProxy()
+	proxies := new(ReverseProxy)
 	certManager := &autocert.Manager{
 		Prompt:     autocert.AcceptTOS,
 		Cache:      autocert.DirCache(cfg.CertsDir),
@@ -80,17 +79,10 @@ func (s *Server) loadConfig() error {
 		return nil
 	}
 
-	config := NewConfig()
-	err := config.ReadFromFile(s.config.ConfigFile)
+	events, err := ReadConfigFile(s.config.ConfigFile)
 	if err != nil {
 		if os.IsNotExist(err) {
-			exampleConfig := []string{
-				"# hostnames -> mode://url",
-				"example.com example2.com -> http://localhost:8080",
-				"fileexample.com -> file:///var/www/public/",
-				"redirect.com -> redirect://github.com",
-			}
-			if err := ioutil.WriteFile(s.config.ConfigFile, []byte(strings.Join(exampleConfig, "\n")), 0777); err != nil {
+			if err := ioutil.WriteFile(s.config.ConfigFile, []byte(ExampleConfig), 0777); err == nil {
 				log.Println("created demo config:", s.config.ConfigFile)
 			}
 			return nil
@@ -98,7 +90,7 @@ func (s *Server) loadConfig() error {
 		return err
 	}
 
-	s.proxies.AddProxyList(config)
+	s.proxies.Process(events)
 	return nil
 }
 
@@ -108,6 +100,17 @@ func (s *Server) watchDockerEvents() error {
 		return err
 	}
 
-	s.proxies.AddProxyList(docker)
+	events, err := docker.GetActiveContainers()
+	if err != nil {
+		return err
+	}
+	s.proxies.Process(events)
+
+	eventsCh, err := docker.GetProxyEvents()
+	if err != nil {
+		return err
+	}
+	go s.proxies.Listen(eventsCh)
+
 	return nil
 }

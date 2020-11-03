@@ -2,63 +2,35 @@ package razvhost
 
 import (
 	"bufio"
+	"io"
 	"log"
+	"net/url"
 	"os"
 	"strings"
-	"sync"
 )
 
-// Config ...
-type Config struct {
-	mtx     sync.Mutex
-	proxies map[string]string
-}
+// ExampleConfig ...
+var ExampleConfig = strings.Join([]string{
+	"# comment",
+	"example.com example2.com -> http://localhost:8080",
+	"fileexample.com -> file:///var/www/public/",
+	"redirect.com -> redirect://github.com",
+}, "\n")
 
-// NewConfig ...
-func NewConfig() *Config {
-	return &Config{
-		proxies: make(map[string]string),
-	}
-}
-
-// AddProxy ...
-func (c *Config) AddProxy(hostname, target string) {
-	c.mtx.Lock()
-	defer c.mtx.Unlock()
-	c.proxies[hostname] = target
-}
-
-// GetProxy ...
-func (c *Config) GetProxy(hostname string) (string, bool) {
-	c.mtx.Lock()
-	defer c.mtx.Unlock()
-	target, ok := c.proxies[hostname]
-	return target, ok
-}
-
-// GetProxies ...
-func (c *Config) GetProxies() map[string]string {
-	proxies := make(map[string]string)
-	c.mtx.Lock()
-	defer c.mtx.Unlock()
-	for hostname, target := range c.proxies {
-		proxies[hostname] = target
-	}
-	return proxies
-}
-
-// ReadFromFile ...
-func (c *Config) ReadFromFile(filename string) error {
+// ReadConfigFile ...
+func ReadConfigFile(filename string) ([]ProxyEvent, error) {
 	file, err := os.Open(filename)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer file.Close()
+	return ReadConfig(file)
+}
 
-	c.mtx.Lock()
-	defer c.mtx.Unlock()
-
-	scanner := bufio.NewScanner(file)
+// ReadConfig ...
+func ReadConfig(config io.Reader) ([]ProxyEvent, error) {
+	var proxies []ProxyEvent
+	scanner := bufio.NewScanner(config)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if strings.HasPrefix(line, "#") {
@@ -70,11 +42,22 @@ func (c *Config) ReadFromFile(filename string) error {
 			continue
 		}
 		hostnames := strings.Fields(items[0])
-		target := strings.TrimSpace(items[1])
+		targets := strings.Fields(items[1])
 		for _, hostname := range hostnames {
-			c.proxies[hostname] = target
+			for _, target := range targets {
+				targetURL, err := url.Parse(target)
+				if err != nil {
+					log.Println("bad target:", err)
+					continue
+				}
+				proxies = append(proxies, ProxyEvent{
+					Hostname: hostname,
+					Target:   *targetURL,
+					Up:       true,
+				})
+			}
 		}
 	}
 
-	return scanner.Err()
+	return proxies, scanner.Err()
 }
