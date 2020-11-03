@@ -33,7 +33,7 @@ func ReadConfig(config io.Reader) ([]ProxyEvent, error) {
 	scanner := bufio.NewScanner(config)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
-		if strings.HasPrefix(line, "#") {
+		if len(line) == 0 || strings.HasPrefix(line, "#") {
 			continue
 		}
 		items := strings.SplitN(line, "->", 2)
