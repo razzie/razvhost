@@ -134,6 +134,7 @@ func (p *ReverseProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func newDirector(target url.URL, discardHeaders []string) func(req *http.Request) {
 	return func(req *http.Request) {
+		req.Header.Set("razvhost-remoteaddr", req.RemoteAddr)
 		for _, h := range discardHeaders {
 			req.Header.Del(h)
 		}
