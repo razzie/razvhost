@@ -5,10 +5,11 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 type mux struct {
-	mtx      sync.Mutex
+	mtx      sync.RWMutex
 	entries  []*muxEntry
 	entryMap map[string]*muxEntry
 }
@@ -57,8 +58,8 @@ func (m *mux) remove(path string, target url.URL) {
 }
 
 func (m *mux) handler(path string) http.Handler {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
 
 	for _, entry := range m.entries {
 		if strings.HasPrefix(path, entry.path) {
@@ -74,7 +75,7 @@ func (m *mux) handler(path string) http.Handler {
 type muxEntry struct {
 	path     string
 	handlers []muxHandler
-	next     int
+	next     uint32
 }
 
 func (e *muxEntry) add(handler http.Handler, target url.URL) {
@@ -91,12 +92,12 @@ func (e *muxEntry) remove(target url.URL) {
 }
 
 func (e *muxEntry) handler() http.Handler {
-	handlersCount := len(e.handlers)
+	handlersCount := uint32(len(e.handlers))
 	if handlersCount == 0 {
 		return nil
 	}
-	e.next = (e.next + 1) % handlersCount
-	return e.handlers[e.next].handler
+	next := int(atomic.AddUint32(&e.next, 1) % handlersCount)
+	return e.handlers[next].handler
 }
 
 type muxHandler struct {

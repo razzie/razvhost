@@ -43,7 +43,7 @@ func (e ProxyEvent) String() string {
 
 // ReverseProxy ...
 type ReverseProxy struct {
-	mtx            sync.Mutex
+	mtx            sync.RWMutex
 	proxies        map[string]*mux
 	DiscardHeaders []string
 }
@@ -79,9 +79,9 @@ func (p *ReverseProxy) processEvent(e ProxyEvent) {
 	host, path := splitHostnameAndPath(e.Hostname)
 
 	if !e.Up {
-		p.mtx.Lock()
+		p.mtx.RLock()
 		m := p.proxies[host]
-		p.mtx.Unlock()
+		p.mtx.RUnlock()
 		if m != nil {
 			m.remove(path, e.Target)
 		}
@@ -107,8 +107,8 @@ func (p *ReverseProxy) processEvent(e ProxyEvent) {
 
 // ValidateHost implements autocert.HostPolicy
 func (p *ReverseProxy) ValidateHost(ctx context.Context, host string) error {
-	p.mtx.Lock()
-	defer p.mtx.Unlock()
+	p.mtx.RLock()
+	defer p.mtx.RUnlock()
 	if _, ok := p.proxies[host]; !ok {
 		return fmt.Errorf("unknown hostname: %s", host)
 	}
@@ -116,11 +116,11 @@ func (p *ReverseProxy) ValidateHost(ctx context.Context, host string) error {
 }
 
 func (p *ReverseProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	log.Println(r.RemoteAddr, "->", r.Method, r.Host, r.RequestURI)
+	defer log.Println(r.RemoteAddr, "->", r.Method, r.Host, r.RequestURI)
 
-	p.mtx.Lock()
+	p.mtx.RLock()
 	m, ok := p.proxies[r.Host]
-	p.mtx.Unlock()
+	p.mtx.RUnlock()
 	if !ok {
 		http.Error(w, "Unknown hostname in request: "+r.Host, http.StatusForbidden)
 		return
