@@ -21,6 +21,10 @@ func (m *mux) add(path string, handler http.Handler, target url.URL) {
 		m.entryMap = make(map[string]*muxEntry)
 	}
 
+	if len(path) > 1 {
+		handler = &trimPathHandler{path: path, handler: handler}
+	}
+
 	entry := m.entryMap[path]
 	if entry != nil {
 		entry.add(handler, target)
@@ -98,4 +102,17 @@ func (e *muxEntry) handler() http.Handler {
 type muxHandler struct {
 	handler http.Handler
 	target  url.URL
+}
+
+type trimPathHandler struct {
+	path    string
+	handler http.Handler
+}
+
+func (h trimPathHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	r.URL.Path = strings.TrimPrefix(r.URL.Path, h.path)
+	if !strings.HasPrefix(r.URL.Path, "/") {
+		r.URL.Path = "/" + r.URL.Path
+	}
+	h.handler.ServeHTTP(w, r)
 }
