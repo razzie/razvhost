@@ -132,26 +132,22 @@ func (p *ReverseProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "Cannot serve path: "+r.URL.Path, http.StatusForbidden)
 }
 
-func newDirector(target url.URL, discardHeaders []string) func(req *http.Request) {
-	return func(req *http.Request) {
-		req.Header.Set("razvhost-remoteaddr", req.RemoteAddr)
-		for _, h := range discardHeaders {
-			req.Header.Del(h)
-		}
-		req.URL.Scheme = target.Scheme
-		req.URL.Host = target.Host
-	}
-}
-
 type redirectHandler struct {
 	targetURL url.URL
 }
 
-func (redir *redirectHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (redir *redirectHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	target := redir.targetURL
-	target.Scheme = r.URL.Scheme
-	target.Path = r.URL.Path
-	http.Redirect(w, r, target.String(), http.StatusSeeOther)
+	targetQuery := target.RawQuery
+	req.URL.Scheme = target.Scheme
+	req.URL.Host = target.Host
+	req.URL.Path, req.URL.RawPath = joinURLPath(&target, req.URL)
+	if targetQuery == "" || req.URL.RawQuery == "" {
+		req.URL.RawQuery = targetQuery + req.URL.RawQuery
+	} else {
+		req.URL.RawQuery = targetQuery + "&" + req.URL.RawQuery
+	}
+	http.Redirect(w, req, req.URL.String(), http.StatusSeeOther)
 }
 
 func splitHostnameAndPath(hostname string) (string, string) {
@@ -162,6 +158,60 @@ func splitHostnameAndPath(hostname string) (string, string) {
 	return hostname[:i], hostname[i:]
 }
 
+func singleJoiningSlash(a, b string) string {
+	aslash := strings.HasSuffix(a, "/")
+	bslash := strings.HasPrefix(b, "/")
+	switch {
+	case aslash && bslash:
+		return a + b[1:]
+	case !aslash && !bslash:
+		return a + "/" + b
+	}
+	return a + b
+}
+
+func joinURLPath(a, b *url.URL) (path, rawpath string) {
+	if a.RawPath == "" && b.RawPath == "" {
+		return singleJoiningSlash(a.Path, b.Path), ""
+	}
+
+	apath := a.EscapedPath()
+	bpath := b.EscapedPath()
+
+	aslash := strings.HasSuffix(apath, "/")
+	bslash := strings.HasPrefix(bpath, "/")
+
+	switch {
+	case aslash && bslash:
+		return a.Path + b.Path[1:], apath + bpath[1:]
+	case !aslash && !bslash:
+		return a.Path + "/" + b.Path, apath + "/" + bpath
+	}
+	return a.Path + b.Path, apath + bpath
+}
+
+func (p *ReverseProxy) newDirector(target url.URL) func(req *http.Request) {
+	targetQuery := target.RawQuery
+	return func(req *http.Request) {
+		req.URL.Scheme = target.Scheme
+		req.URL.Host = target.Host
+		req.URL.Path, req.URL.RawPath = joinURLPath(&target, req.URL)
+		if targetQuery == "" || req.URL.RawQuery == "" {
+			req.URL.RawQuery = targetQuery + req.URL.RawQuery
+		} else {
+			req.URL.RawQuery = targetQuery + "&" + req.URL.RawQuery
+		}
+		req.Header.Set("razvhost-remoteaddr", req.RemoteAddr)
+		for _, h := range p.DiscardHeaders {
+			req.Header.Del(h)
+		}
+		if _, ok := req.Header["User-Agent"]; !ok {
+			// explicitly disable User-Agent so it's not set to default value
+			req.Header.Set("User-Agent", "")
+		}
+	}
+}
+
 func (p *ReverseProxy) newHandler(hostname string, target url.URL) (path string, handler http.Handler, err error) {
 	hostname, path = splitHostnameAndPath(hostname)
 
@@ -170,19 +220,9 @@ func (p *ReverseProxy) newHandler(hostname string, target url.URL) (path string,
 		handler = http.FileServer(http.Dir(target.Path))
 
 	case "http", "https":
-		if len(target.Path) > 1 {
-			err = fmt.Errorf("paths are unsupported in http/https target URLs (%v)", target)
-			return
-		}
-		rproxy := httputil.NewSingleHostReverseProxy(&target)
-		rproxy.Director = newDirector(target, p.DiscardHeaders)
-		handler = rproxy
+		handler = &httputil.ReverseProxy{Director: p.newDirector(target)}
 
 	case "redirect":
-		if len(target.Path) > 1 {
-			err = fmt.Errorf("paths are unsupported in redirect target URLs (%v)", target)
-			return
-		}
 		handler = &redirectHandler{targetURL: target}
 
 	default:
