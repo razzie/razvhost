@@ -11,6 +11,19 @@ import (
 	"sync"
 )
 
+// DefaultDiscardHeaders ...
+var DefaultDiscardHeaders = []string{
+	"x-client-ip",
+	"cf-connecting-ip",
+	"fastly-client-ip",
+	"true-client-ip",
+	"x-real-ip",
+	"x-cluster-client-ip",
+	"x-forwarded",
+	"forwarded-for",
+	"forwarded",
+}
+
 // ProxyEvent ...
 type ProxyEvent struct {
 	Hostname string
@@ -30,8 +43,9 @@ func (e ProxyEvent) String() string {
 
 // ReverseProxy ...
 type ReverseProxy struct {
-	mtx     sync.Mutex
-	proxies map[string]*mux
+	mtx            sync.Mutex
+	proxies        map[string]*mux
+	DiscardHeaders []string
 }
 
 // Listen listens to proxy events
@@ -74,7 +88,7 @@ func (p *ReverseProxy) processEvent(e ProxyEvent) {
 		return
 	}
 
-	_, handler, err := newHandler(e.Hostname, e.Target)
+	_, handler, err := p.newHandler(e.Hostname, e.Target)
 	if err != nil {
 		log.Println(err)
 		return
@@ -118,21 +132,9 @@ func (p *ReverseProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "Cannot serve path: "+r.URL.Path, http.StatusForbidden)
 }
 
-var junkProxyHeaders = []string{
-	"x-client-ip",
-	"cf-connecting-ip",
-	"fastly-client-ip",
-	"true-client-ip",
-	"x-real-ip",
-	"x-cluster-client-ip",
-	"x-forwarded",
-	"forwarded-for",
-	"forwarded",
-}
-
-func newDirector(target url.URL) func(req *http.Request) {
+func newDirector(target url.URL, discardHeaders []string) func(req *http.Request) {
 	return func(req *http.Request) {
-		for _, h := range junkProxyHeaders {
+		for _, h := range discardHeaders {
 			req.Header.Del(h)
 		}
 		req.URL.Scheme = target.Scheme
@@ -159,7 +161,7 @@ func splitHostnameAndPath(hostname string) (string, string) {
 	return hostname[:i], hostname[i:]
 }
 
-func newHandler(hostname string, target url.URL) (path string, handler http.Handler, err error) {
+func (p *ReverseProxy) newHandler(hostname string, target url.URL) (path string, handler http.Handler, err error) {
 	hostname, path = splitHostnameAndPath(hostname)
 
 	switch target.Scheme {
@@ -172,7 +174,7 @@ func newHandler(hostname string, target url.URL) (path string, handler http.Hand
 			return
 		}
 		rproxy := httputil.NewSingleHostReverseProxy(&target)
-		rproxy.Director = newDirector(target)
+		rproxy.Director = newDirector(target, p.DiscardHeaders)
 		handler = rproxy
 
 	case "redirect":
