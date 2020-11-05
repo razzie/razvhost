@@ -136,18 +136,19 @@ type redirectHandler struct {
 	targetURL url.URL
 }
 
-func (redir *redirectHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+func (redir *redirectHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	target := redir.targetURL
 	targetQuery := target.RawQuery
-	req.URL.Scheme = target.Scheme
-	req.URL.Host = target.Host
-	req.URL.Path, req.URL.RawPath = joinURLPath(&target, req.URL)
-	if targetQuery == "" || req.URL.RawQuery == "" {
-		req.URL.RawQuery = targetQuery + req.URL.RawQuery
+
+	redirURL := *r.URL
+	redirURL.Host = target.Host
+	redirURL.Path, redirURL.RawPath = joinURLPath(&target, &redirURL)
+	if targetQuery == "" || redirURL.RawQuery == "" {
+		redirURL.RawQuery = targetQuery + redirURL.RawQuery
 	} else {
-		req.URL.RawQuery = targetQuery + "&" + req.URL.RawQuery
+		redirURL.RawQuery = targetQuery + "&" + redirURL.RawQuery
 	}
-	http.Redirect(w, req, req.URL.String(), http.StatusSeeOther)
+	http.Redirect(w, r, redirURL.String(), http.StatusSeeOther)
 }
 
 func splitHostnameAndPath(hostname string) (string, string) {
