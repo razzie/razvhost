@@ -105,6 +105,43 @@ func (p *ReverseProxy) processEvent(e ProxyEvent) {
 	m.add(path, handler, e.Target)
 }
 
+func (p *ReverseProxy) newDirector(target url.URL) func(req *http.Request) {
+	targetQuery := target.RawQuery
+	return func(req *http.Request) {
+		req.URL.Scheme = target.Scheme
+		req.URL.Host = target.Host
+		req.URL.Path, req.URL.RawPath = joinURLPath(&target, req.URL)
+		if targetQuery == "" || req.URL.RawQuery == "" {
+			req.URL.RawQuery = targetQuery + req.URL.RawQuery
+		} else {
+			req.URL.RawQuery = targetQuery + "&" + req.URL.RawQuery
+		}
+		req.Header.Set("razvhost-remoteaddr", req.RemoteAddr)
+		for _, h := range p.DiscardHeaders {
+			req.Header.Del(h)
+		}
+		if _, ok := req.Header["User-Agent"]; !ok {
+			// explicitly disable User-Agent so it's not set to default value
+			req.Header.Set("User-Agent", "")
+		}
+	}
+}
+
+func (p *ReverseProxy) newHandler(hostname string, target url.URL) (path string, handler http.Handler, err error) {
+	hostname, path = splitHostnameAndPath(hostname)
+	switch target.Scheme {
+	case "file":
+		handler = http.FileServer(http.Dir(target.Path))
+	case "http", "https":
+		handler = &httputil.ReverseProxy{Director: p.newDirector(target)}
+	case "redirect":
+		handler = newRedirectHandler(target)
+	default:
+		err = fmt.Errorf("unknown target URL scheme: %s", target.Scheme)
+	}
+	return
+}
+
 // ValidateHost implements autocert.HostPolicy
 func (p *ReverseProxy) ValidateHost(ctx context.Context, host string) error {
 	p.mtx.RLock()
@@ -117,7 +154,6 @@ func (p *ReverseProxy) ValidateHost(ctx context.Context, host string) error {
 
 func (p *ReverseProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer log.Println(r.RemoteAddr, "->", r.Method, r.Host, r.RequestURI)
-
 	p.mtx.RLock()
 	m, ok := p.proxies[r.Host]
 	p.mtx.RUnlock()
@@ -132,23 +168,19 @@ func (p *ReverseProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "Cannot serve path: "+r.URL.Path, http.StatusForbidden)
 }
 
-type redirectHandler struct {
-	targetURL url.URL
-}
-
-func (redir *redirectHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	target := redir.targetURL
-	targetQuery := target.RawQuery
-
-	redirURL := *r.URL
-	redirURL.Host = target.Host
-	redirURL.Path, redirURL.RawPath = joinURLPath(&target, &redirURL)
-	if targetQuery == "" || redirURL.RawQuery == "" {
-		redirURL.RawQuery = targetQuery + redirURL.RawQuery
-	} else {
-		redirURL.RawQuery = targetQuery + "&" + redirURL.RawQuery
-	}
-	http.Redirect(w, r, redirURL.String(), http.StatusSeeOther)
+func newRedirectHandler(target url.URL) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		targetQuery := target.RawQuery
+		redirURL := *r.URL
+		redirURL.Host = target.Host
+		redirURL.Path, redirURL.RawPath = joinURLPath(&target, &redirURL)
+		if targetQuery == "" || redirURL.RawQuery == "" {
+			redirURL.RawQuery = targetQuery + redirURL.RawQuery
+		} else {
+			redirURL.RawQuery = targetQuery + "&" + redirURL.RawQuery
+		}
+		http.Redirect(w, r, redirURL.String(), http.StatusSeeOther)
+	})
 }
 
 func splitHostnameAndPath(hostname string) (string, string) {
@@ -189,46 +221,4 @@ func joinURLPath(a, b *url.URL) (path, rawpath string) {
 		return a.Path + "/" + b.Path, apath + "/" + bpath
 	}
 	return a.Path + b.Path, apath + bpath
-}
-
-func (p *ReverseProxy) newDirector(target url.URL) func(req *http.Request) {
-	targetQuery := target.RawQuery
-	return func(req *http.Request) {
-		req.URL.Scheme = target.Scheme
-		req.URL.Host = target.Host
-		req.URL.Path, req.URL.RawPath = joinURLPath(&target, req.URL)
-		if targetQuery == "" || req.URL.RawQuery == "" {
-			req.URL.RawQuery = targetQuery + req.URL.RawQuery
-		} else {
-			req.URL.RawQuery = targetQuery + "&" + req.URL.RawQuery
-		}
-		req.Header.Set("razvhost-remoteaddr", req.RemoteAddr)
-		for _, h := range p.DiscardHeaders {
-			req.Header.Del(h)
-		}
-		if _, ok := req.Header["User-Agent"]; !ok {
-			// explicitly disable User-Agent so it's not set to default value
-			req.Header.Set("User-Agent", "")
-		}
-	}
-}
-
-func (p *ReverseProxy) newHandler(hostname string, target url.URL) (path string, handler http.Handler, err error) {
-	hostname, path = splitHostnameAndPath(hostname)
-
-	switch target.Scheme {
-	case "file":
-		handler = http.FileServer(http.Dir(target.Path))
-
-	case "http", "https":
-		handler = &httputil.ReverseProxy{Director: p.newDirector(target)}
-
-	case "redirect":
-		handler = &redirectHandler{targetURL: target}
-
-	default:
-		err = fmt.Errorf("unknown target URL scheme: %s", target.Scheme)
-	}
-
-	return
 }
