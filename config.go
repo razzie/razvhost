@@ -15,7 +15,7 @@ example.com alias.com -> http://localhost:8080
 example.com/files -> file:///var/www/public/
 loadbalance.com -> http://localhost:8081 http://localhost:8082
 fileserver.com -> file:///var/www/public/
-redirect.com -> redirect://github.com`
+redirect.com -> redirect://github.com/razzie/razvhost`
 
 // ReadConfigFile ...
 func ReadConfigFile(filename string) ([]ProxyEvent, error) {
