@@ -105,9 +105,9 @@ func (p *ReverseProxy) processEvent(e ProxyEvent) {
 	m.Add(path, handler, e.Target)
 }
 
-func (p *ReverseProxy) newDirector(target url.URL) func(req *http.Request) {
+func (p *ReverseProxy) newProxyHandler(path string, target url.URL) http.Handler {
 	targetQuery := target.RawQuery
-	return func(req *http.Request) {
+	director := func(req *http.Request) {
 		req.URL.Scheme = target.Scheme
 		req.URL.Host = target.Host
 		req.URL.Path, req.URL.RawPath = joinURLPath(&target, req.URL)
@@ -125,6 +125,16 @@ func (p *ReverseProxy) newDirector(target url.URL) func(req *http.Request) {
 			req.Header.Set("User-Agent", "")
 		}
 	}
+	modifyResp := func(resp *http.Response) error {
+		if location := resp.Header.Get("Location"); len(location) > 0 {
+			resp.Header.Set("Location", path+location)
+		}
+		return nil
+	}
+	return &httputil.ReverseProxy{
+		Director:       director,
+		ModifyResponse: modifyResp,
+	}
 }
 
 func (p *ReverseProxy) newHandler(hostname string, target url.URL) (path string, handler http.Handler, err error) {
@@ -133,7 +143,7 @@ func (p *ReverseProxy) newHandler(hostname string, target url.URL) (path string,
 	case "file":
 		handler = http.FileServer(http.Dir(target.Path))
 	case "http", "https":
-		handler = &httputil.ReverseProxy{Director: p.newDirector(target)}
+		handler = p.newProxyHandler(path, target)
 	case "redirect":
 		handler = newRedirectHandler(target)
 	default:
