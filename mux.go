@@ -8,13 +8,15 @@ import (
 	"sync/atomic"
 )
 
-type mux struct {
+// Mux is a http.Handler router similar to http.ServeMux, but with load balancing
+type Mux struct {
 	mtx      sync.RWMutex
 	entries  []*muxEntry
 	entryMap map[string]*muxEntry
 }
 
-func (m *mux) add(path string, handler http.Handler, target url.URL) {
+// Add ...
+func (m *Mux) Add(path string, handler http.Handler, target url.URL) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -47,7 +49,8 @@ func (m *mux) add(path string, handler http.Handler, target url.URL) {
 	m.entries = append(m.entries, entry)
 }
 
-func (m *mux) remove(path string, target url.URL) {
+// Remove ...
+func (m *Mux) Remove(path string, target url.URL) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -57,7 +60,8 @@ func (m *mux) remove(path string, target url.URL) {
 	}
 }
 
-func (m *mux) handler(path string) http.Handler {
+// Handler ...
+func (m *Mux) Handler(path string) http.Handler {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 

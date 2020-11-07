@@ -44,7 +44,7 @@ func (e ProxyEvent) String() string {
 // ReverseProxy ...
 type ReverseProxy struct {
 	mtx            sync.RWMutex
-	proxies        map[string]*mux
+	proxies        map[string]*Mux
 	DiscardHeaders []string
 }
 
@@ -52,7 +52,7 @@ type ReverseProxy struct {
 func (p *ReverseProxy) Listen(events <-chan ProxyEvent) {
 	p.mtx.Lock()
 	if p.proxies == nil {
-		p.proxies = make(map[string]*mux)
+		p.proxies = make(map[string]*Mux)
 	}
 	p.mtx.Unlock()
 
@@ -65,7 +65,7 @@ func (p *ReverseProxy) Listen(events <-chan ProxyEvent) {
 func (p *ReverseProxy) Process(events []ProxyEvent) {
 	p.mtx.Lock()
 	if p.proxies == nil {
-		p.proxies = make(map[string]*mux)
+		p.proxies = make(map[string]*Mux)
 	}
 	p.mtx.Unlock()
 
@@ -83,7 +83,7 @@ func (p *ReverseProxy) processEvent(e ProxyEvent) {
 		m := p.proxies[host]
 		p.mtx.RUnlock()
 		if m != nil {
-			m.remove(path, e.Target)
+			m.Remove(path, e.Target)
 		}
 		return
 	}
@@ -97,12 +97,12 @@ func (p *ReverseProxy) processEvent(e ProxyEvent) {
 	p.mtx.Lock()
 	m := p.proxies[host]
 	if m == nil {
-		m = new(mux)
+		m = new(Mux)
 		p.proxies[host] = m
 	}
 	p.mtx.Unlock()
 
-	m.add(path, handler, e.Target)
+	m.Add(path, handler, e.Target)
 }
 
 func (p *ReverseProxy) newDirector(target url.URL) func(req *http.Request) {
@@ -161,7 +161,7 @@ func (p *ReverseProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unknown hostname in request: "+r.Host, http.StatusForbidden)
 		return
 	}
-	if handler := m.handler(r.URL.Path); handler != nil {
+	if handler := m.Handler(r.URL.Path); handler != nil {
 		handler.ServeHTTP(w, r)
 		return
 	}
