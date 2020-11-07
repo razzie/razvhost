@@ -25,7 +25,7 @@ func init() {
 	flag.StringVar(&CertsDir, "certs", "certs", "Directory to store certificates in")
 	flag.BoolVar(&NoCert, "nocert", false, "Disable HTTPS and certificate handling")
 	flag.BoolVar(&WatchDockerEvents, "docker", false, "Watch Docker events to find containers with VIRTUAL_HOST")
-	flag.BoolVar(&EnableHTTP2, "http2", false, "Enable HTTP2 requests towards internal ports")
+	flag.BoolVar(&EnableHTTP2, "http2", false, "Enable HTTP2")
 	flag.StringVar(&DiscardHeaders, "discard-headers", "", "Comma separated list of http headers to discard")
 	flag.StringVar(&DebugAddr, "debug", "", "Debug listener address, where hostname is the first part of the URL")
 	flag.Parse()

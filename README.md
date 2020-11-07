@@ -58,7 +58,7 @@ Usage of ./razvhost:
   -docker
         Watch Docker events to find containers with VIRTUAL_HOST
   -http2
-        Enable HTTP2 requests towards internal ports
+        Enable HTTP2
   -nocert
         Disable HTTPS and certificate handling
 ```
