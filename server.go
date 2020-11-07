@@ -15,6 +15,7 @@ import (
 type ServerConfig struct {
 	ConfigFile        string
 	CertsDir          string
+	NoCert            bool
 	WatchDockerEvents bool
 	EnableHTTP2       bool
 	DiscardHeaders    []string
@@ -66,6 +67,11 @@ func (s *Server) Serve() error {
 	}
 	if !s.config.EnableHTTP2 {
 		server.TLSNextProto = make(map[string]func(*http.Server, *tls.Conn, http.Handler))
+	}
+
+	if s.config.NoCert {
+		server.Addr = ":80"
+		return server.ListenAndServe()
 	}
 
 	errChan := make(chan error, 1)
