@@ -153,7 +153,7 @@ func (p *ReverseProxy) ValidateHost(ctx context.Context, host string) error {
 }
 
 func (p *ReverseProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	defer log.Println(r.RemoteAddr, "->", r.Method, r.Host, r.RequestURI)
+	defer log.Println(r.RemoteAddr, "->", r.Method, r.Host, r.URL.RequestURI())
 	p.mtx.RLock()
 	m, ok := p.proxies[r.Host]
 	p.mtx.RUnlock()

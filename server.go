@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	"golang.org/x/crypto/acme/autocert"
 )
@@ -77,6 +78,21 @@ func (s *Server) Serve() error {
 	return <-errChan
 }
 
+// Debug ...
+func (s *Server) Debug(addr string) error {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		parts := strings.SplitN(r.URL.Path, "/", 3)
+		if len(parts) < 2 {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+		r.Host = parts[1]
+		r.URL.Path = strings.TrimPrefix(r.URL.Path, "/"+r.Host)
+		s.proxies.ServeHTTP(&redirectHook{w: w, prefix: "/" + r.Host}, r)
+	})
+	return http.ListenAndServe(addr, handler)
+}
+
 func (s *Server) loadConfig() error {
 	if len(s.config.ConfigFile) == 0 {
 		return nil
@@ -116,4 +132,24 @@ func (s *Server) watchDockerEvents() error {
 	go s.proxies.Listen(eventsCh)
 
 	return nil
+}
+
+type redirectHook struct {
+	w      http.ResponseWriter
+	prefix string
+}
+
+func (h *redirectHook) Header() http.Header {
+	return h.w.Header()
+}
+
+func (h *redirectHook) Write(buf []byte) (int, error) {
+	return h.w.Write(buf)
+}
+
+func (h *redirectHook) WriteHeader(statusCode int) {
+	if location := h.w.Header().Get("Location"); len(location) > 0 {
+		h.w.Header().Set("Location", h.prefix+location)
+	}
+	h.w.WriteHeader(statusCode)
 }
