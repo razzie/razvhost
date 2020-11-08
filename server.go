@@ -60,7 +60,7 @@ func NewServer(cfg *ServerConfig) *Server {
 func (s *Server) Serve() error {
 	server := &http.Server{
 		Addr:    ":443",
-		Handler: s.proxies,
+		Handler: loggerMiddleware(s.proxies),
 		TLSConfig: &tls.Config{
 			GetCertificate: s.certManager.GetCertificate,
 		},
@@ -76,7 +76,8 @@ func (s *Server) Serve() error {
 
 	errChan := make(chan error, 1)
 	go func() {
-		errChan <- http.ListenAndServe(":80", s.certManager.HTTPHandler(nil))
+		acmeHandler := s.certManager.HTTPHandler(nil)
+		errChan <- http.ListenAndServe(":80", loggerMiddleware(acmeHandler))
 	}()
 	go func() {
 		errChan <- server.ListenAndServeTLS("", "")
@@ -158,4 +159,11 @@ func (h *redirectHook) WriteHeader(statusCode int) {
 		h.w.Header().Set("Location", h.prefix+location)
 	}
 	h.w.WriteHeader(statusCode)
+}
+
+func loggerMiddleware(handler http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer log.Println(r.RemoteAddr, "->", r.Method, r.Host, r.URL.RequestURI())
+		handler.ServeHTTP(w, r)
+	})
 }
