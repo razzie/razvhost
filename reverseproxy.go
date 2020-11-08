@@ -75,7 +75,7 @@ func (p *ReverseProxy) Process(events []ProxyEvent) {
 }
 
 func (p *ReverseProxy) processEvent(e ProxyEvent) {
-	log.Println("proxy event:", e.String())
+	log.Println("CONFIG:", e.String())
 	host, path := splitHostnameAndPath(e.Hostname)
 
 	if !e.Up {

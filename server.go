@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/mssola/user_agent"
 	"golang.org/x/crypto/acme/autocert"
 )
 
@@ -163,7 +164,11 @@ func (h *redirectHook) WriteHeader(statusCode int) {
 
 func loggerMiddleware(handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		defer log.Println(r.RemoteAddr, "->", r.Method, r.Host, r.URL.RequestURI())
+		ua := user_agent.New(r.UserAgent())
+		browser, ver := ua.Browser()
+		defer log.Printf("%s %s%s - %s (%s %s %s)",
+			r.Method, r.Host, r.URL.RequestURI(),
+			r.RemoteAddr, ua.OS(), browser, ver)
 		handler.ServeHTTP(w, r)
 	})
 }
