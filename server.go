@@ -98,7 +98,7 @@ func (s *Server) Debug(addr string) error {
 		r.URL.Path = strings.TrimPrefix(r.URL.Path, "/"+r.Host)
 		s.proxies.ServeHTTP(&redirectHook{w: w, prefix: "/" + r.Host}, r)
 	})
-	return http.ListenAndServe(addr, handler)
+	return http.ListenAndServe(addr, loggerMiddleware(handler))
 }
 
 func (s *Server) loadConfig() error {
