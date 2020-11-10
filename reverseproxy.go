@@ -116,6 +116,7 @@ func (p *ReverseProxy) newProxyHandler(path string, target url.URL) http.Handler
 		} else {
 			req.URL.RawQuery = targetQuery + "&" + req.URL.RawQuery
 		}
+		req.Header.Set("X-Forwarded-Host", req.Host)
 		req.Header.Set("razvhost-remoteaddr", req.RemoteAddr)
 		for _, h := range p.DiscardHeaders {
 			req.Header.Del(h)
