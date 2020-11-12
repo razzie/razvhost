@@ -78,6 +78,9 @@ github.com/sirupsen/logrus
 golang.org/x/crypto/acme
 golang.org/x/crypto/acme/autocert
 # golang.org/x/net v0.0.0-20190501004415-9ce7a6920f09
+## explicit
+golang.org/x/net/html
+golang.org/x/net/html/atom
 golang.org/x/net/idna
 # golang.org/x/sync v0.0.0-20190423024810-112230192c58
 golang.org/x/sync/errgroup

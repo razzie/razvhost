@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+
+	"golang.org/x/net/html"
 )
 
 // DefaultDiscardHeaders ...
@@ -126,16 +128,10 @@ func (p *ReverseProxy) newProxyHandler(path string, target url.URL) http.Handler
 			req.Header.Set("User-Agent", "")
 		}
 	}
-	handler := &httputil.ReverseProxy{Director: director}
-	if len(path) > 0 {
-		handler.ModifyResponse = func(resp *http.Response) error {
-			if location := resp.Header.Get("Location"); len(location) > 0 {
-				resp.Header.Set("Location", path+location)
-			}
-			return nil
-		}
+	return &httputil.ReverseProxy{
+		Director:       director,
+		ModifyResponse: newPathPrefixHook(path),
 	}
-	return handler
 }
 
 func (p *ReverseProxy) newHandler(hostname string, target url.URL) (path string, handler http.Handler, err error) {
@@ -191,6 +187,40 @@ func newRedirectHandler(target url.URL) http.Handler {
 		}
 		http.Redirect(w, r, redirURL.String(), http.StatusSeeOther)
 	})
+}
+
+func newPathPrefixHook(path string) func(*http.Response) error {
+	if len(path) == 0 {
+		return nil
+	}
+	modifyToken := func(token *html.Token) {
+		if token.Type != html.StartTagToken && token.Type != html.SelfClosingTagToken {
+			return
+		}
+		for i, attr := range token.Attr {
+			switch attr.Key {
+			case "href", "src", "action", "formaction":
+				if strings.HasPrefix(attr.Val, "/") && !strings.HasPrefix(attr.Val, "//") {
+					attr.Val = path + attr.Val
+				}
+				token.Attr[i] = attr
+			}
+		}
+	}
+	return func(resp *http.Response) error {
+		if ctype := resp.Header.Get("Content-Type"); strings.HasPrefix(ctype, "text/html") {
+			resp.Header.Del("Content-Length")
+			resp.ContentLength = -1
+			resp.Body = &HTMLStreamer{
+				R:           resp.Body,
+				ModifyToken: modifyToken,
+			}
+		}
+		if location := resp.Header.Get("Location"); len(location) > 0 {
+			resp.Header.Set("Location", path+location)
+		}
+		return nil
+	}
 }
 
 func splitHostnameAndPath(hostname string) (string, string) {
