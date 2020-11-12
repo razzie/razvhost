@@ -109,6 +109,7 @@ func (fs *fileServer) handleDir(w http.ResponseWriter, dir http.File, uri string
 	entries := make([]fsEntry, 0, len(files)+1)
 	if uri != "." && uri != "/" {
 		entries = append(entries, fsEntry{
+			Icon:     "&#128194;",
 			Name:     "..",
 			FullName: path.Join(fs.prefix, path.Dir(uri)),
 		})
