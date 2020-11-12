@@ -144,8 +144,11 @@ func FileServer(fs http.FileSystem, prefix string) http.Handler {
 	}
 }
 
-// ErrOutsideRoot ...
-var ErrOutsideRoot = fmt.Errorf("File points outside of the root directory")
+// errors
+var (
+	ErrOutsideRoot     = fmt.Errorf("File points outside of the root directory")
+	ErrSymlinkMaxDepth = fmt.Errorf("Symlink max depth exceeded")
+)
 
 // Directory ...
 type Directory string
@@ -171,6 +174,7 @@ func (root Directory) resolve(relPath string) (resolvedPath string, err error) {
 	if err != nil {
 		return
 	}
+	var depth int
 	filename := path.Join(absRoot, relPath)
 	for {
 		var fi os.FileInfo
@@ -193,6 +197,10 @@ func (root Directory) resolve(relPath string) (resolvedPath string, err error) {
 		}
 		filename, err = os.Readlink(filename)
 		if err != nil {
+			return
+		}
+		if depth++; depth > 16 {
+			err = ErrSymlinkMaxDepth
 			return
 		}
 	}
