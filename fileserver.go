@@ -57,6 +57,10 @@ tr:not(:first-child):hover > td {
 		<td>{{.Modified}}</td>
 		<td>{{.Created}}</td>
 	</tr>
+	{{else}}
+	<tr>
+		<td colspan="4">Empty</td>
+	</tr>
 	{{end}}
 </table>
 `))
@@ -103,7 +107,7 @@ func (fs *fileServer) handleDir(w http.ResponseWriter, dir http.File, uri string
 		return files[i].IsDir() && !files[j].IsDir()
 	})
 	entries := make([]fsEntry, 0, len(files)+1)
-	if uri != "." {
+	if uri != "." && uri != "/" {
 		entries = append(entries, fsEntry{
 			Name:     "..",
 			FullName: path.Join(fs.prefix, path.Dir(uri)),
