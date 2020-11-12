@@ -126,23 +126,23 @@ func (p *ReverseProxy) newProxyHandler(path string, target url.URL) http.Handler
 			req.Header.Set("User-Agent", "")
 		}
 	}
-	modifyResp := func(resp *http.Response) error {
-		if location := resp.Header.Get("Location"); len(location) > 0 {
-			resp.Header.Set("Location", path+location)
+	handler := &httputil.ReverseProxy{Director: director}
+	if len(path) > 0 {
+		handler.ModifyResponse = func(resp *http.Response) error {
+			if location := resp.Header.Get("Location"); len(location) > 0 {
+				resp.Header.Set("Location", path+location)
+			}
+			return nil
 		}
-		return nil
 	}
-	return &httputil.ReverseProxy{
-		Director:       director,
-		ModifyResponse: modifyResp,
-	}
+	return handler
 }
 
 func (p *ReverseProxy) newHandler(hostname string, target url.URL) (path string, handler http.Handler, err error) {
 	hostname, path = splitHostnameAndPath(hostname)
 	switch target.Scheme {
 	case "file":
-		handler = http.FileServer(http.Dir(target.Path))
+		handler = FileServer(Directory(target.Path), path)
 	case "http", "https":
 		handler = p.newProxyHandler(path, target)
 	case "redirect":
