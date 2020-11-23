@@ -48,6 +48,7 @@ type ReverseProxy struct {
 	mtx            sync.RWMutex
 	proxies        map[string]*Mux
 	DiscardHeaders []string
+	ExtraHeaders   map[string]string
 }
 
 // Listen listens to proxy events
@@ -107,6 +108,18 @@ func (p *ReverseProxy) processEvent(e ProxyEvent) {
 	m.Add(path, handler, e.Target)
 }
 
+func (p *ReverseProxy) updateHeaders(w http.ResponseWriter, r *http.Request) {
+	r.Header.Set("X-Forwarded-Host", r.Host)
+	r.Header.Set("razvhost-remoteaddr", r.RemoteAddr)
+	for _, h := range p.DiscardHeaders {
+		r.Header.Del(h)
+	}
+	for h, value := range p.ExtraHeaders {
+		r.Header.Add(h, value)
+		w.Header().Add(h, value)
+	}
+}
+
 func (p *ReverseProxy) newProxyHandler(path string, target url.URL) http.Handler {
 	targetQuery := target.RawQuery
 	director := func(req *http.Request) {
@@ -117,11 +130,6 @@ func (p *ReverseProxy) newProxyHandler(path string, target url.URL) http.Handler
 			req.URL.RawQuery = targetQuery + req.URL.RawQuery
 		} else {
 			req.URL.RawQuery = targetQuery + "&" + req.URL.RawQuery
-		}
-		req.Header.Set("X-Forwarded-Host", req.Host)
-		req.Header.Set("razvhost-remoteaddr", req.RemoteAddr)
-		for _, h := range p.DiscardHeaders {
-			req.Header.Del(h)
 		}
 		if _, ok := req.Header["User-Agent"]; !ok {
 			// explicitly disable User-Agent so it's not set to default value
@@ -168,6 +176,7 @@ func (p *ReverseProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if handler := m.Handler(r.URL.Path); handler != nil {
+		p.updateHeaders(w, r)
 		handler.ServeHTTP(w, r)
 		return
 	}

@@ -20,6 +20,7 @@ type ServerConfig struct {
 	WatchDockerEvents bool
 	EnableHTTP2       bool
 	DiscardHeaders    []string
+	ExtraHeaders      map[string]string
 }
 
 // Server ...
@@ -33,6 +34,7 @@ type Server struct {
 func NewServer(cfg *ServerConfig) *Server {
 	proxies := &ReverseProxy{
 		DiscardHeaders: cfg.DiscardHeaders,
+		ExtraHeaders:   cfg.ExtraHeaders,
 	}
 	certManager := &autocert.Manager{
 		Prompt:     autocert.AcceptTOS,
