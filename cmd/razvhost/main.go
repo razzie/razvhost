@@ -20,6 +20,8 @@ var (
 	DebugAddr         string
 )
 
+var version string
+
 func init() {
 	flag.StringVar(&ConfigFile, "cfg", "config", "Config file")
 	flag.StringVar(&CertsDir, "certs", "certs", "Directory to store certificates in")
@@ -34,6 +36,7 @@ func init() {
 }
 
 func main() {
+	log.Println("Starting razvhost", version)
 	cfg := &razvhost.ServerConfig{
 		ConfigFile:        ConfigFile,
 		CertsDir:          CertsDir,
@@ -41,6 +44,7 @@ func main() {
 		WatchDockerEvents: WatchDockerEvents,
 		EnableHTTP2:       EnableHTTP2,
 		DiscardHeaders:    append(strings.Split(DiscardHeaders, ","), razvhost.DefaultDiscardHeaders...),
+		ExtraHeaders:      map[string]string{"Server": "razvhost/" + version},
 	}
 	srv := razvhost.NewServer(cfg)
 	if len(DebugAddr) > 0 {
