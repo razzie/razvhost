@@ -25,6 +25,8 @@ example.com/files -> file:///var/www/public/
 loadbalance.com -> http://localhost:8081 http://localhost:8082
 fileserver.com -> file:///var/www/public/
 redirect.com -> redirect://github.com/razzie/razvhost
+phpexample.com -> php:///var/www/index.php
+phpexample2.com -> php:///var/www/mysite/`
 ```
 
 ## Build
@@ -61,6 +63,8 @@ Usage of ./razvhost:
         Enable HTTP2
   -nocert
         Disable HTTPS and certificate handling
+  -php-addr string
+        PHP CGI address (default "unix:///var/run/php/php-fpm.sock")
 ```
 
 If you intend to run razvhost using **supervisor**, here is an example configuration:

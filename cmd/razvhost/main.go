@@ -17,6 +17,7 @@ var (
 	WatchDockerEvents bool
 	EnableHTTP2       bool
 	DiscardHeaders    string
+	PHPAddr           string
 	DebugAddr         string
 )
 
@@ -29,6 +30,7 @@ func init() {
 	flag.BoolVar(&WatchDockerEvents, "docker", false, "Watch Docker events to find containers with VIRTUAL_HOST")
 	flag.BoolVar(&EnableHTTP2, "http2", false, "Enable HTTP2")
 	flag.StringVar(&DiscardHeaders, "discard-headers", "", "Comma separated list of http headers to discard")
+	flag.StringVar(&PHPAddr, "php-addr", "unix:///var/run/php/php-fpm.sock", "PHP CGI address")
 	flag.StringVar(&DebugAddr, "debug", "", "Debug listener address, where hostname is the first part of the URL")
 	flag.Parse()
 
@@ -45,6 +47,7 @@ func main() {
 		EnableHTTP2:       EnableHTTP2,
 		DiscardHeaders:    append(strings.Split(DiscardHeaders, ","), razvhost.DefaultDiscardHeaders...),
 		ExtraHeaders:      map[string]string{"Server": "razvhost/" + version},
+		PHPAddr:           PHPAddr,
 	}
 	srv := razvhost.NewServer(cfg)
 	if len(DebugAddr) > 0 {

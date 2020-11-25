@@ -73,6 +73,9 @@ github.com/opencontainers/runc/libcontainer/user
 github.com/pkg/errors
 # github.com/sirupsen/logrus v1.4.1
 github.com/sirupsen/logrus
+# github.com/yookoala/gofast v0.4.0
+## explicit
+github.com/yookoala/gofast
 # golang.org/x/crypto v0.0.0-20201002170205-7f63de1d35b0
 ## explicit
 golang.org/x/crypto/acme
@@ -92,6 +95,9 @@ golang.org/x/text/secure/bidirule
 golang.org/x/text/transform
 golang.org/x/text/unicode/bidi
 golang.org/x/text/unicode/norm
+# golang.org/x/tools v0.0.0-20190524140312-2c0ae7006135
+golang.org/x/tools/godoc/vfs
+golang.org/x/tools/godoc/vfs/httpfs
 # google.golang.org/genproto v0.0.0-20190819201941-24fa4b261c55
 google.golang.org/genproto/googleapis/rpc/status
 # google.golang.org/grpc v1.27.1

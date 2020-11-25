@@ -21,6 +21,7 @@ type ServerConfig struct {
 	EnableHTTP2       bool
 	DiscardHeaders    []string
 	ExtraHeaders      map[string]string
+	PHPAddr           string
 }
 
 // Server ...
@@ -32,9 +33,14 @@ type Server struct {
 
 // NewServer ...
 func NewServer(cfg *ServerConfig) *Server {
+	phpsrv, err := NewPHPServer(cfg.PHPAddr)
+	if err != nil {
+		log.Println(err)
+	}
 	proxies := &ReverseProxy{
 		DiscardHeaders: cfg.DiscardHeaders,
 		ExtraHeaders:   cfg.ExtraHeaders,
+		PHPServer:      phpsrv,
 	}
 	certManager := &autocert.Manager{
 		Prompt:     autocert.AcceptTOS,

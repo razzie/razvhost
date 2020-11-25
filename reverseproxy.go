@@ -49,6 +49,7 @@ type ReverseProxy struct {
 	proxies        map[string]*Mux
 	DiscardHeaders []string
 	ExtraHeaders   map[string]string
+	PHPServer      *PHPServer
 }
 
 // Listen listens to proxy events
@@ -151,6 +152,8 @@ func (p *ReverseProxy) newHandler(hostname string, target url.URL) (path string,
 		handler = p.newProxyHandler(path, target)
 	case "redirect":
 		handler = newRedirectHandler(target)
+	case "php":
+		handler, err = p.PHPServer.Handler(path, target.Path)
 	default:
 		err = fmt.Errorf("unknown target URL scheme: %s", target.Scheme)
 	}
