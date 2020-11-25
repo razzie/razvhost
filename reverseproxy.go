@@ -111,7 +111,7 @@ func (p *ReverseProxy) processEvent(e ProxyEvent) {
 
 func (p *ReverseProxy) updateHeaders(w http.ResponseWriter, r *http.Request) {
 	r.Header.Set("X-Forwarded-Host", r.Host)
-	r.Header.Set("razvhost-remoteaddr", r.RemoteAddr)
+	r.Header.Set("x-razvhost-remoteaddr", r.RemoteAddr)
 	for _, h := range p.DiscardHeaders {
 		r.Header.Del(h)
 	}
