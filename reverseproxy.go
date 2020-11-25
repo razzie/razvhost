@@ -147,13 +147,13 @@ func (p *ReverseProxy) newHandler(hostname string, target url.URL) (path string,
 	hostname, path = splitHostnameAndPath(hostname)
 	switch target.Scheme {
 	case "file":
-		handler = FileServer(Directory(target.Path), path)
+		handler = FileServer(Directory(target.Host+target.Path), path)
 	case "http", "https":
 		handler = p.newProxyHandler(path, target)
 	case "redirect":
 		handler = newRedirectHandler(target)
 	case "php":
-		handler, err = p.PHPServer.Handler(path, target.Path)
+		handler, err = p.PHPServer.Handler(path, target.Host+target.Path)
 	default:
 		err = fmt.Errorf("unknown target URL scheme: %s", target.Scheme)
 	}
