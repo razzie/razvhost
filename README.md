@@ -2,12 +2,15 @@
 Virtual hosting/reverse proxy with TLS termination and automatic certificate management
 
 ## Features
-* Proxy, file hosting and redirect modes
+* 4 operation modes:
+  * Reverse proxy
+  * File and directory hosting
+  * PHP hosting (requires php-fpm)
+  * Redirect
 * HTTPS (TLS termination)
 * HTTP2
 * Automatic certificate management (from Let's Encrypt)
-* Multiple path routes for a single hostname
-* Merging request and target paths
+* Supports all kinds of combinations of routes and target paths
 * Load balancing
 * Watching docker containers with VIRTUAL_HOST and VIRTUAL_PORT environment variables
 * Configurable header discarding
@@ -26,7 +29,7 @@ loadbalance.com -> http://localhost:8081 http://localhost:8082
 fileserver.com -> file:///var/www/public/
 redirect.com -> redirect://github.com/razzie/razvhost
 phpexample.com -> php:///var/www/index.php
-phpexample2.com -> php:///var/www/mysite/`
+phpexample2.com -> php:///var/www/mysite/
 ```
 
 ## Build
