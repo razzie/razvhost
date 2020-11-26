@@ -116,8 +116,10 @@ type trimPathHandler struct {
 
 func (h trimPathHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r.URL.Path = strings.TrimPrefix(r.URL.Path, h.path)
+	r.URL.RawPath = strings.TrimPrefix(r.URL.RawPath, h.path)
 	if !strings.HasPrefix(r.URL.Path, "/") {
 		r.URL.Path = "/" + r.URL.Path
+		r.URL.RawPath = "/" + r.URL.RawPath
 	}
 	h.handler.ServeHTTP(w, r)
 }

@@ -29,6 +29,7 @@ func NewHandlerFactory(phpaddr *url.URL) *HandlerFactory {
 // Handler ...
 func (hf *HandlerFactory) Handler(hostname string, target url.URL) (handler http.Handler, err error) {
 	hostname, path := splitHostnameAndPath(hostname)
+	// note: request URIs are already relative to 'path' by the time they reach these handlers
 	switch target.Scheme {
 	case "file":
 		handler = FileServer(Directory(target.Host+target.Path), path)
