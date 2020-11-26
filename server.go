@@ -1,16 +1,37 @@
 package razvhost
 
 import (
+	"context"
 	"crypto/tls"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/mssola/user_agent"
 	"golang.org/x/crypto/acme/autocert"
 )
+
+// ProxyEvent ...
+type ProxyEvent struct {
+	Hostname string
+	Target   url.URL
+	Up       bool
+}
+
+func (e ProxyEvent) String() string {
+	str := e.Hostname + " -> " + e.Target.String()
+	if e.Up {
+		str += " [UP]"
+	} else {
+		str += " [DOWN]"
+	}
+	return str
+}
 
 // ServerConfig ...
 type ServerConfig struct {
@@ -26,31 +47,21 @@ type ServerConfig struct {
 
 // Server ...
 type Server struct {
-	config      ServerConfig
-	proxies     *ReverseProxy
-	certManager *autocert.Manager
+	mtx     sync.RWMutex
+	proxies map[string]*Mux
+	config  ServerConfig
+	factory *HandlerFactory
 }
 
 // NewServer ...
 func NewServer(cfg *ServerConfig) *Server {
-	phpsrv, err := NewPHPServer(cfg.PHPAddr)
+	phpaddr, err := url.Parse(cfg.PHPAddr)
 	if err != nil {
 		log.Println(err)
 	}
-	proxies := &ReverseProxy{
-		DiscardHeaders: cfg.DiscardHeaders,
-		ExtraHeaders:   cfg.ExtraHeaders,
-		PHPServer:      phpsrv,
-	}
-	certManager := &autocert.Manager{
-		Prompt:     autocert.AcceptTOS,
-		Cache:      autocert.DirCache(cfg.CertsDir),
-		HostPolicy: proxies.ValidateHost,
-	}
 	srv := &Server{
-		config:      *cfg,
-		proxies:     proxies,
-		certManager: certManager,
+		config:  *cfg,
+		factory: NewHandlerFactory(phpaddr),
 	}
 	if len(cfg.ConfigFile) > 0 {
 		if err := srv.loadConfig(); err != nil {
@@ -65,13 +76,101 @@ func NewServer(cfg *ServerConfig) *Server {
 	return srv
 }
 
+// Listen listens to proxy events
+func (s *Server) Listen(events <-chan ProxyEvent) {
+	s.mtx.Lock()
+	if s.proxies == nil {
+		s.proxies = make(map[string]*Mux)
+	}
+	s.mtx.Unlock()
+
+	for e := range events {
+		s.processEvent(e)
+	}
+}
+
+// Process processes a list of proxy events
+func (s *Server) Process(events []ProxyEvent) {
+	s.mtx.Lock()
+	if s.proxies == nil {
+		s.proxies = make(map[string]*Mux)
+	}
+	s.mtx.Unlock()
+
+	for _, e := range events {
+		s.processEvent(e)
+	}
+}
+
+func (s *Server) processEvent(e ProxyEvent) {
+	log.Println("CONFIG:", e.String())
+	host, path := splitHostnameAndPath(e.Hostname)
+
+	if !e.Up {
+		s.mtx.RLock()
+		m := s.proxies[host]
+		s.mtx.RUnlock()
+		if m != nil {
+			m.Remove(path, e.Target)
+		}
+		return
+	}
+
+	handler, err := s.factory.Handler(e.Hostname, e.Target)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	s.mtx.Lock()
+	m := s.proxies[host]
+	if m == nil {
+		m = new(Mux)
+		s.proxies[host] = m
+	}
+	s.mtx.Unlock()
+
+	m.Add(path, handler, e.Target)
+}
+
+// ValidateHost implements autocert.HostPolicy
+func (s *Server) ValidateHost(ctx context.Context, host string) error {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+	if _, ok := s.proxies[host]; !ok {
+		return fmt.Errorf("unknown hostname: %s", host)
+	}
+	return nil
+}
+
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	s.mtx.RLock()
+	m, ok := s.proxies[r.Host]
+	s.mtx.RUnlock()
+	if !ok {
+		http.Error(w, "Unknown hostname in request: "+r.Host, http.StatusForbidden)
+		return
+	}
+	if handler := m.Handler(r.URL.Path); handler != nil {
+		s.updateHeaders(w, r)
+		handler.ServeHTTP(w, r)
+		return
+	}
+	http.Error(w, "Cannot serve path: "+r.URL.Path, http.StatusForbidden)
+}
+
 // Serve ...
 func (s *Server) Serve() error {
+	certManager := &autocert.Manager{
+		Prompt:     autocert.AcceptTOS,
+		Cache:      autocert.DirCache(s.config.CertsDir),
+		HostPolicy: s.ValidateHost,
+	}
 	server := &http.Server{
 		Addr:    ":443",
-		Handler: loggerMiddleware(s.proxies),
+		Handler: LoggerMiddleware(s),
 		TLSConfig: &tls.Config{
-			GetCertificate: s.certManager.GetCertificate,
+			GetCertificate: certManager.GetCertificate,
 		},
 	}
 	if !s.config.EnableHTTP2 {
@@ -85,8 +184,8 @@ func (s *Server) Serve() error {
 
 	errChan := make(chan error, 1)
 	go func() {
-		acmeHandler := s.certManager.HTTPHandler(nil)
-		errChan <- http.ListenAndServe(":80", loggerMiddleware(acmeHandler))
+		acmeHandler := certManager.HTTPHandler(nil)
+		errChan <- http.ListenAndServe(":80", LoggerMiddleware(acmeHandler))
 	}()
 	go func() {
 		errChan <- server.ListenAndServeTLS("", "")
@@ -104,9 +203,22 @@ func (s *Server) Debug(addr string) error {
 		}
 		r.Host = parts[1]
 		r.URL.Path = strings.TrimPrefix(r.URL.Path, "/"+r.Host)
-		s.proxies.ServeHTTP(&redirectHook{w: w, prefix: "/" + r.Host}, r)
+		w = NewPathPrefixHTMLResponseWriter("/"+r.Host, w)
+		s.ServeHTTP(w, r)
 	})
-	return http.ListenAndServe(addr, loggerMiddleware(handler))
+	return http.ListenAndServe(addr, LoggerMiddleware(handler))
+}
+
+func (s *Server) updateHeaders(w http.ResponseWriter, r *http.Request) {
+	r.Header.Set("X-Forwarded-Host", r.Host)
+	r.Header.Set("x-razvhost-remoteaddr", r.RemoteAddr)
+	for _, h := range s.config.DiscardHeaders {
+		r.Header.Del(h)
+	}
+	for h, value := range s.config.ExtraHeaders {
+		r.Header.Add(h, value)
+		w.Header().Add(h, value)
+	}
 }
 
 func (s *Server) loadConfig() error {
@@ -125,7 +237,7 @@ func (s *Server) loadConfig() error {
 		return err
 	}
 
-	s.proxies.Process(events)
+	s.Process(events)
 	return nil
 }
 
@@ -139,38 +251,19 @@ func (s *Server) watchDockerEvents() error {
 	if err != nil {
 		return err
 	}
-	s.proxies.Process(events)
+	s.Process(events)
 
 	eventsCh, err := docker.GetProxyEvents()
 	if err != nil {
 		return err
 	}
-	go s.proxies.Listen(eventsCh)
+	go s.Listen(eventsCh)
 
 	return nil
 }
 
-type redirectHook struct {
-	w      http.ResponseWriter
-	prefix string
-}
-
-func (h *redirectHook) Header() http.Header {
-	return h.w.Header()
-}
-
-func (h *redirectHook) Write(buf []byte) (int, error) {
-	return h.w.Write(buf)
-}
-
-func (h *redirectHook) WriteHeader(statusCode int) {
-	if location := h.w.Header().Get("Location"); len(location) > 0 {
-		h.w.Header().Set("Location", h.prefix+location)
-	}
-	h.w.WriteHeader(statusCode)
-}
-
-func loggerMiddleware(handler http.Handler) http.Handler {
+// LoggerMiddleware ...
+func LoggerMiddleware(handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ua := user_agent.New(r.UserAgent())
 		browser, ver := ua.Browser()

@@ -9,6 +9,19 @@ import (
 	"strings"
 )
 
+// DefaultDiscardHeaders ...
+var DefaultDiscardHeaders = []string{
+	"x-client-ip",
+	"cf-connecting-ip",
+	"fastly-client-ip",
+	"true-client-ip",
+	"x-real-ip",
+	"x-cluster-client-ip",
+	"x-forwarded",
+	"forwarded-for",
+	"forwarded",
+}
+
 // ExampleConfig ...
 var ExampleConfig = `# comment
 example.com alias.com -> http://localhost:8080

@@ -3,7 +3,9 @@ package razvhost
 import (
 	"bytes"
 	"io"
+	"net/http"
 	"strconv"
+	"strings"
 
 	"golang.org/x/net/html"
 )
@@ -40,6 +42,61 @@ func (h *HTMLStreamer) Read(p []byte) (n int, err error) {
 // Close implements io.Closer
 func (h *HTMLStreamer) Close() error {
 	return h.R.Close()
+}
+
+// NewPathPrefixHTMLStreamer ...
+func NewPathPrefixHTMLStreamer(path string, r io.ReadCloser) io.ReadCloser {
+	modifyToken := func(token *html.Token) {
+		if token.Type != html.StartTagToken && token.Type != html.SelfClosingTagToken {
+			return
+		}
+		for i, attr := range token.Attr {
+			switch attr.Key {
+			case "href", "src", "action", "formaction":
+				if strings.HasPrefix(attr.Val, "/") && !strings.HasPrefix(attr.Val, "//") {
+					attr.Val = path + attr.Val
+				}
+				token.Attr[i] = attr
+			}
+		}
+	}
+	return &HTMLStreamer{
+		R:           r,
+		ModifyToken: modifyToken,
+	}
+}
+
+// NewPathPrefixHTMLResponseWriter ...
+func NewPathPrefixHTMLResponseWriter(path string, w http.ResponseWriter) http.ResponseWriter {
+	reader, writer := io.Pipe()
+	go io.Copy(w, NewPathPrefixHTMLStreamer(path, reader))
+	return &pathPrefixHTMLResponseWriter{
+		w:    w,
+		pipe: writer,
+		path: path,
+	}
+}
+
+type pathPrefixHTMLResponseWriter struct {
+	w    http.ResponseWriter
+	pipe *io.PipeWriter
+	path string
+}
+
+func (w *pathPrefixHTMLResponseWriter) Header() http.Header {
+	return w.w.Header()
+}
+
+func (w *pathPrefixHTMLResponseWriter) Write(p []byte) (int, error) {
+	return w.pipe.Write(p)
+}
+
+func (w *pathPrefixHTMLResponseWriter) WriteHeader(statusCode int) {
+	h := w.w.Header()
+	if location := h.Get("Location"); len(location) > 0 {
+		h.Set("Location", w.path+location)
+	}
+	w.w.WriteHeader(statusCode)
 }
 
 func tokenToString(t html.Token) string {
