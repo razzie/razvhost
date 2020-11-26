@@ -60,22 +60,19 @@ func (hf *HandlerFactory) newProxyHandler(hostname, path string, target url.URL)
 			req.Header.Set("User-Agent", "")
 		}
 	}
-	var modifyResponse func(*http.Response) error
-	if len(path) > 0 || len(target.Path) > 1 {
-		modifyResponse = func(resp *http.Response) error {
-			if ctype := resp.Header.Get("Content-Type"); strings.HasPrefix(ctype, "text/html") {
-				resp.Header.Del("Content-Length")
-				resp.ContentLength = -1
-				resp.Body = NewPathPrefixHTMLStreamer(hostname, target.Path, path, resp.Body)
-			}
-			if location := resp.Header.Get("Location"); len(location) > 0 {
-				if u, _ := url.Parse(location); u != nil && u.Host == hostname {
-					location = u.RequestURI()
-				}
-				resp.Header.Set("Location", path+strings.TrimPrefix(location, target.Path))
-			}
-			return nil
+	modifyResponse := func(resp *http.Response) error {
+		if ctype := resp.Header.Get("Content-Type"); strings.HasPrefix(ctype, "text/html") {
+			resp.Header.Del("Content-Length")
+			resp.ContentLength = -1
+			resp.Body = NewPathPrefixHTMLStreamer(hostname, target.Path, path, resp.Body)
 		}
+		if location := resp.Header.Get("Location"); len(location) > 0 {
+			if u, _ := url.Parse(location); u != nil && u.Host == hostname {
+				location = u.RequestURI()
+			}
+			resp.Header.Set("Location", path+strings.TrimPrefix(location, target.Path))
+		}
+		return nil
 	}
 	return &httputil.ReverseProxy{
 		Director:       director,
