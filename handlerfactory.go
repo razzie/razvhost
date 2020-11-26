@@ -121,8 +121,9 @@ func (hf *HandlerFactory) newPHPHandler(path, endpoint string) (http.Handler, er
 	}
 	handler := gofast.NewHandler(sessHandler, hf.phpClientFactory)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w = NewPathPrefixHTMLResponseWriter(path, w)
-		handler.ServeHTTP(w, r)
+		ww := NewPathPrefixHTMLResponseWriter(path, w)
+		defer ww.Close()
+		handler.ServeHTTP(ww, r)
 	}), nil
 }
 

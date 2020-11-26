@@ -3,9 +3,11 @@ package razvhost
 import (
 	"bytes"
 	"io"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 
 	"golang.org/x/net/html"
 )
@@ -67,20 +69,41 @@ func NewPathPrefixHTMLStreamer(path string, r io.ReadCloser) io.ReadCloser {
 }
 
 // NewPathPrefixHTMLResponseWriter ...
-func NewPathPrefixHTMLResponseWriter(path string, w http.ResponseWriter) http.ResponseWriter {
-	reader, writer := io.Pipe()
-	go io.Copy(w, NewPathPrefixHTMLStreamer(path, reader))
+func NewPathPrefixHTMLResponseWriter(path string, w http.ResponseWriter) ResponseWriterCloser {
+	var wg sync.WaitGroup
+	var reader io.ReadCloser
+	var writer io.WriteCloser
+	reader, writer = io.Pipe()
+	reader = NewPathPrefixHTMLStreamer(path, reader)
+	wg.Add(1)
+	go func() {
+		if _, err := io.Copy(w, reader); err != nil {
+			log.Println(err)
+		}
+		wg.Done()
+	}()
 	return &pathPrefixHTMLResponseWriter{
-		w:    w,
-		pipe: writer,
-		path: path,
+		w:      w,
+		wg:     &wg,
+		reader: reader,
+		writer: writer,
+		path:   path,
 	}
 }
 
+// ResponseWriterCloser is a closeable http.ResponseWriter
+type ResponseWriterCloser interface {
+	http.ResponseWriter
+	io.Closer
+}
+
 type pathPrefixHTMLResponseWriter struct {
-	w    http.ResponseWriter
-	pipe *io.PipeWriter
-	path string
+	w      http.ResponseWriter
+	wg     *sync.WaitGroup
+	reader io.ReadCloser
+	writer io.WriteCloser
+	path   string
+	isHTML bool
 }
 
 func (w *pathPrefixHTMLResponseWriter) Header() http.Header {
@@ -88,7 +111,10 @@ func (w *pathPrefixHTMLResponseWriter) Header() http.Header {
 }
 
 func (w *pathPrefixHTMLResponseWriter) Write(p []byte) (int, error) {
-	return w.pipe.Write(p)
+	if w.isHTML {
+		return w.writer.Write(p)
+	}
+	return w.w.Write(p)
 }
 
 func (w *pathPrefixHTMLResponseWriter) WriteHeader(statusCode int) {
@@ -96,7 +122,24 @@ func (w *pathPrefixHTMLResponseWriter) WriteHeader(statusCode int) {
 	if location := h.Get("Location"); len(location) > 0 {
 		h.Set("Location", w.path+location)
 	}
+	if ctype := h.Get("Content-Type"); strings.HasPrefix(ctype, "text/html") {
+		w.isHTML = true
+		h.Del("Content-Length")
+	}
 	w.w.WriteHeader(statusCode)
+}
+
+func (w *pathPrefixHTMLResponseWriter) Flush() {
+	if flusher, ok := w.w.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+func (w *pathPrefixHTMLResponseWriter) Close() error {
+	w.writer.Close()
+	w.wg.Wait()
+	w.reader.Close()
+	return nil
 }
 
 func tokenToString(t html.Token) string {

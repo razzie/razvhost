@@ -203,8 +203,9 @@ func (s *Server) Debug(addr string) error {
 		}
 		r.Host = parts[1]
 		r.URL.Path = strings.TrimPrefix(r.URL.Path, "/"+r.Host)
-		w = NewPathPrefixHTMLResponseWriter("/"+r.Host, w)
-		s.ServeHTTP(w, r)
+		ww := NewPathPrefixHTMLResponseWriter("/"+r.Host, w)
+		defer ww.Close()
+		s.ServeHTTP(ww, r)
 	})
 	return http.ListenAndServe(addr, LoggerMiddleware(handler))
 }
