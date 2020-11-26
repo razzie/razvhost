@@ -47,7 +47,7 @@ func (h *HTMLStreamer) Close() error {
 }
 
 // NewPathPrefixHTMLStreamer ...
-func NewPathPrefixHTMLStreamer(path string, r io.ReadCloser) io.ReadCloser {
+func NewPathPrefixHTMLStreamer(trimPath, addPath string, r io.ReadCloser) io.ReadCloser {
 	modifyToken := func(token *html.Token) {
 		if token.Type != html.StartTagToken && token.Type != html.SelfClosingTagToken {
 			return
@@ -56,7 +56,7 @@ func NewPathPrefixHTMLStreamer(path string, r io.ReadCloser) io.ReadCloser {
 			switch attr.Key {
 			case "href", "src", "action", "formaction":
 				if strings.HasPrefix(attr.Val, "/") && !strings.HasPrefix(attr.Val, "//") {
-					attr.Val = path + attr.Val
+					attr.Val = addPath + strings.TrimPrefix(attr.Val, trimPath)
 				}
 				token.Attr[i] = attr
 			}
@@ -69,12 +69,12 @@ func NewPathPrefixHTMLStreamer(path string, r io.ReadCloser) io.ReadCloser {
 }
 
 // NewPathPrefixHTMLResponseWriter ...
-func NewPathPrefixHTMLResponseWriter(path string, w http.ResponseWriter) ResponseWriterCloser {
+func NewPathPrefixHTMLResponseWriter(trimPath, addPath string, w http.ResponseWriter) ResponseWriterCloser {
 	var wg sync.WaitGroup
 	var reader io.ReadCloser
 	var writer io.WriteCloser
 	reader, writer = io.Pipe()
-	reader = NewPathPrefixHTMLStreamer(path, reader)
+	reader = NewPathPrefixHTMLStreamer(trimPath, addPath, reader)
 	wg.Add(1)
 	go func() {
 		if _, err := io.Copy(w, reader); err != nil {
@@ -83,11 +83,12 @@ func NewPathPrefixHTMLResponseWriter(path string, w http.ResponseWriter) Respons
 		wg.Done()
 	}()
 	return &pathPrefixHTMLResponseWriter{
-		w:      w,
-		wg:     &wg,
-		reader: reader,
-		writer: writer,
-		path:   path,
+		w:        w,
+		wg:       &wg,
+		reader:   reader,
+		writer:   writer,
+		trimPath: trimPath,
+		addPath:  addPath,
 	}
 }
 
@@ -98,12 +99,13 @@ type ResponseWriterCloser interface {
 }
 
 type pathPrefixHTMLResponseWriter struct {
-	w      http.ResponseWriter
-	wg     *sync.WaitGroup
-	reader io.ReadCloser
-	writer io.WriteCloser
-	path   string
-	isHTML bool
+	w        http.ResponseWriter
+	wg       *sync.WaitGroup
+	reader   io.ReadCloser
+	writer   io.WriteCloser
+	trimPath string
+	addPath  string
+	isHTML   bool
 }
 
 func (w *pathPrefixHTMLResponseWriter) Header() http.Header {
@@ -120,7 +122,7 @@ func (w *pathPrefixHTMLResponseWriter) Write(p []byte) (int, error) {
 func (w *pathPrefixHTMLResponseWriter) WriteHeader(statusCode int) {
 	h := w.w.Header()
 	if location := h.Get("Location"); len(location) > 0 {
-		h.Set("Location", w.path+location)
+		h.Set("Location", w.addPath+strings.TrimPrefix(location, w.trimPath))
 	}
 	if ctype := h.Get("Content-Type"); strings.HasPrefix(ctype, "text/html") {
 		w.isHTML = true

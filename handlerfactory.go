@@ -6,6 +6,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/yookoala/gofast"
@@ -65,10 +66,10 @@ func (hf *HandlerFactory) newProxyHandler(path string, target url.URL) http.Hand
 			if ctype := resp.Header.Get("Content-Type"); strings.HasPrefix(ctype, "text/html") {
 				resp.Header.Del("Content-Length")
 				resp.ContentLength = -1
-				resp.Body = NewPathPrefixHTMLStreamer(path, resp.Body)
+				resp.Body = NewPathPrefixHTMLStreamer(target.Path, path, resp.Body)
 			}
 			if location := resp.Header.Get("Location"); len(location) > 0 {
-				resp.Header.Set("Location", path+location)
+				resp.Header.Set("Location", path+strings.TrimPrefix(location, target.Path))
 			}
 			return nil
 		}
@@ -113,15 +114,18 @@ func (hf *HandlerFactory) newPHPHandler(path, endpoint string) (http.Handler, er
 	if err != nil {
 		return nil, err
 	}
+	var trimPath string
 	var sessHandler gofast.SessionHandler
 	if fi.IsDir() {
 		sessHandler = gofast.NewPHPFS(endpoint)(gofast.BasicSession)
+		trimPath = endpoint
 	} else {
 		sessHandler = gofast.NewFileEndpoint(endpoint)(gofast.BasicSession)
+		trimPath = filepath.Dir(endpoint)
 	}
 	handler := gofast.NewHandler(sessHandler, hf.phpClientFactory)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ww := NewPathPrefixHTMLResponseWriter(path, w)
+		ww := NewPathPrefixHTMLResponseWriter(trimPath, path, w)
 		defer ww.Close()
 		handler.ServeHTTP(ww, r)
 	}), nil
