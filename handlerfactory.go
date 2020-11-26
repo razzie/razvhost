@@ -33,18 +33,18 @@ func (hf *HandlerFactory) Handler(hostname string, target url.URL) (handler http
 	case "file":
 		handler = FileServer(Directory(target.Host+target.Path), path)
 	case "http", "https":
-		handler = hf.newProxyHandler(path, target)
+		handler = hf.newProxyHandler(hostname, path, target)
 	case "redirect":
 		handler = hf.newRedirectHandler(target)
 	case "php":
-		handler, err = hf.newPHPHandler(path, target.Host+target.Path)
+		handler, err = hf.newPHPHandler(hostname, path, target.Host+target.Path)
 	default:
 		err = fmt.Errorf("unknown target URL scheme: %s", target.Scheme)
 	}
 	return
 }
 
-func (hf *HandlerFactory) newProxyHandler(path string, target url.URL) http.Handler {
+func (hf *HandlerFactory) newProxyHandler(hostname, path string, target url.URL) http.Handler {
 	targetQuery := target.RawQuery
 	director := func(req *http.Request) {
 		req.URL.Scheme = target.Scheme
@@ -66,9 +66,12 @@ func (hf *HandlerFactory) newProxyHandler(path string, target url.URL) http.Hand
 			if ctype := resp.Header.Get("Content-Type"); strings.HasPrefix(ctype, "text/html") {
 				resp.Header.Del("Content-Length")
 				resp.ContentLength = -1
-				resp.Body = NewPathPrefixHTMLStreamer(target.Path, path, resp.Body)
+				resp.Body = NewPathPrefixHTMLStreamer(hostname, target.Path, path, resp.Body)
 			}
 			if location := resp.Header.Get("Location"); len(location) > 0 {
+				if u, _ := url.Parse(location); u != nil && u.Host == hostname {
+					location = u.RequestURI()
+				}
 				resp.Header.Set("Location", path+strings.TrimPrefix(location, target.Path))
 			}
 			return nil
@@ -106,7 +109,7 @@ func (hf *HandlerFactory) setupPHP(cgiaddr *url.URL) {
 	hf.phpClientFactory = gofast.SimpleClientFactory(connFactory, 0)
 }
 
-func (hf *HandlerFactory) newPHPHandler(path, endpoint string) (http.Handler, error) {
+func (hf *HandlerFactory) newPHPHandler(hostname, path, endpoint string) (http.Handler, error) {
 	if hf.phpClientFactory == nil {
 		return nil, fmt.Errorf("PHP not configured")
 	}
@@ -125,7 +128,7 @@ func (hf *HandlerFactory) newPHPHandler(path, endpoint string) (http.Handler, er
 	}
 	handler := gofast.NewHandler(sessHandler, hf.phpClientFactory)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ww := NewPathPrefixHTMLResponseWriter(trimPath, path, w)
+		ww := NewPathPrefixHTMLResponseWriter(hostname, trimPath, path, w)
 		defer ww.Close()
 		handler.ServeHTTP(ww, r)
 	}), nil

@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -47,7 +48,7 @@ func (h *HTMLStreamer) Close() error {
 }
 
 // NewPathPrefixHTMLStreamer ...
-func NewPathPrefixHTMLStreamer(trimPath, addPath string, r io.ReadCloser) io.ReadCloser {
+func NewPathPrefixHTMLStreamer(hostname, trimPath, addPath string, r io.ReadCloser) io.ReadCloser {
 	modifyToken := func(token *html.Token) {
 		if token.Type != html.StartTagToken && token.Type != html.SelfClosingTagToken {
 			return
@@ -55,6 +56,9 @@ func NewPathPrefixHTMLStreamer(trimPath, addPath string, r io.ReadCloser) io.Rea
 		for i, attr := range token.Attr {
 			switch attr.Key {
 			case "href", "src", "action", "formaction":
+				if u, _ := url.Parse(attr.Val); u != nil && u.Host == hostname {
+					attr.Val = u.RequestURI()
+				}
 				if strings.HasPrefix(attr.Val, "/") && !strings.HasPrefix(attr.Val, "//") {
 					attr.Val = addPath + strings.TrimPrefix(attr.Val, trimPath)
 				}
@@ -69,12 +73,12 @@ func NewPathPrefixHTMLStreamer(trimPath, addPath string, r io.ReadCloser) io.Rea
 }
 
 // NewPathPrefixHTMLResponseWriter ...
-func NewPathPrefixHTMLResponseWriter(trimPath, addPath string, w http.ResponseWriter) ResponseWriterCloser {
+func NewPathPrefixHTMLResponseWriter(hostname, trimPath, addPath string, w http.ResponseWriter) ResponseWriterCloser {
 	var wg sync.WaitGroup
 	var reader io.ReadCloser
 	var writer io.WriteCloser
 	reader, writer = io.Pipe()
-	reader = NewPathPrefixHTMLStreamer(trimPath, addPath, reader)
+	reader = NewPathPrefixHTMLStreamer(hostname, trimPath, addPath, reader)
 	wg.Add(1)
 	go func() {
 		if _, err := io.Copy(w, reader); err != nil {
@@ -89,6 +93,7 @@ func NewPathPrefixHTMLResponseWriter(trimPath, addPath string, w http.ResponseWr
 		writer:   writer,
 		trimPath: trimPath,
 		addPath:  addPath,
+		hostname: hostname,
 	}
 }
 
@@ -105,6 +110,7 @@ type pathPrefixHTMLResponseWriter struct {
 	writer   io.WriteCloser
 	trimPath string
 	addPath  string
+	hostname string
 	isHTML   bool
 }
 
@@ -122,6 +128,9 @@ func (w *pathPrefixHTMLResponseWriter) Write(p []byte) (int, error) {
 func (w *pathPrefixHTMLResponseWriter) WriteHeader(statusCode int) {
 	h := w.w.Header()
 	if location := h.Get("Location"); len(location) > 0 {
+		if u, _ := url.Parse(location); u != nil && u.Host == w.hostname {
+			location = u.RequestURI()
+		}
 		h.Set("Location", w.addPath+strings.TrimPrefix(location, w.trimPath))
 	}
 	if ctype := h.Get("Content-Type"); strings.HasPrefix(ctype, "text/html") {

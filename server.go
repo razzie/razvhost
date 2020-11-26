@@ -203,7 +203,7 @@ func (s *Server) Debug(addr string) error {
 		}
 		r.Host = parts[1]
 		r.URL.Path = strings.TrimPrefix(r.URL.Path, "/"+r.Host)
-		ww := NewPathPrefixHTMLResponseWriter("", "/"+r.Host, w)
+		ww := NewPathPrefixHTMLResponseWriter(r.URL.Host, "", "/"+r.Host, w)
 		defer ww.Close()
 		s.ServeHTTP(ww, r)
 	})
