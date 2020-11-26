@@ -61,7 +61,7 @@ func (hf *HandlerFactory) newProxyHandler(hostname, path string, target url.URL)
 		}
 	}
 	var modifyResponse func(*http.Response) error
-	if len(path) > 0 {
+	if len(path) > 0 || len(target.Path) > 1 {
 		modifyResponse = func(resp *http.Response) error {
 			if ctype := resp.Header.Get("Content-Type"); strings.HasPrefix(ctype, "text/html") {
 				resp.Header.Del("Content-Length")
