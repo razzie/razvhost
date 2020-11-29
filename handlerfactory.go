@@ -88,6 +88,10 @@ func (hf *HandlerFactory) newPHPHandler(hostname, hostPath, endpoint string) (ht
 	if err != nil {
 		return nil, err
 	}
+	endpoint, err = filepath.Abs(endpoint)
+	if err != nil {
+		return nil, err
+	}
 	var targetPath string
 	var sessHandler gofast.SessionHandler
 	if fi.IsDir() {
