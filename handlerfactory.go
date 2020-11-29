@@ -28,61 +28,34 @@ func NewHandlerFactory(phpaddr *url.URL) *HandlerFactory {
 
 // Handler ...
 func (hf *HandlerFactory) Handler(hostname string, target url.URL) (handler http.Handler, err error) {
-	hostname, path := splitHostnameAndPath(hostname)
-	// note: request URIs are already relative to 'path' by the time they reach these handlers
+	hostname, hostPath := splitHostnameAndPath(hostname)
 	switch target.Scheme {
 	case "file":
-		handler = FileServer(Directory(target.Host+target.Path), path)
+		handler = hf.newFileServer(hostname, hostPath, target.Host+target.Path)
 	case "http", "https":
-		handler = hf.newProxyHandler(hostname, path, target)
+		handler = hf.newProxyHandler(hostname, hostPath, target)
 	case "redirect":
-		handler = hf.newRedirectHandler(target)
+		handler = hf.newRedirectHandler(hostname, hostPath, target)
 	case "php":
-		handler, err = hf.newPHPHandler(hostname, path, target.Host+target.Path)
+		handler, err = hf.newPHPHandler(hostname, hostPath, target.Host+target.Path)
 	default:
 		err = fmt.Errorf("unknown target URL scheme: %s", target.Scheme)
 	}
 	return
 }
 
-func (hf *HandlerFactory) newProxyHandler(hostname, path string, target url.URL) http.Handler {
-	targetQuery := target.RawQuery
-	director := func(req *http.Request) {
-		req.URL.Scheme = target.Scheme
-		req.URL.Host = target.Host
-		req.URL.Path, req.URL.RawPath = joinURLPath(&target, req.URL)
-		if targetQuery == "" || req.URL.RawQuery == "" {
-			req.URL.RawQuery = targetQuery + req.URL.RawQuery
-		} else {
-			req.URL.RawQuery = targetQuery + "&" + req.URL.RawQuery
-		}
-		if _, ok := req.Header["User-Agent"]; !ok {
-			// explicitly disable User-Agent so it's not set to default value
-			req.Header.Set("User-Agent", "")
-		}
-	}
-	modifyResponse := func(resp *http.Response) error {
-		if ctype := resp.Header.Get("Content-Type"); strings.HasPrefix(ctype, "text/html") {
-			resp.Header.Del("Content-Length")
-			resp.ContentLength = -1
-			resp.Body = NewPathPrefixHTMLStreamer(hostname, target.Path, path, resp.Body)
-		}
-		if location := resp.Header.Get("Location"); len(location) > 0 {
-			if u, _ := url.Parse(location); u != nil && u.Host == hostname {
-				location = u.RequestURI()
-			}
-			resp.Header.Set("Location", path+strings.TrimPrefix(location, target.Path))
-		}
-		return nil
-	}
-	return &httputil.ReverseProxy{
-		Director:       director,
-		ModifyResponse: modifyResponse,
-	}
+func (hf *HandlerFactory) newFileServer(hostname, hostPath, dir string) http.Handler {
+	handler := FileServer(Directory(dir))
+	return handlePathCombinations(handler, hostname, hostPath, "")
 }
 
-func (hf *HandlerFactory) newRedirectHandler(target url.URL) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func (hf *HandlerFactory) newProxyHandler(hostname, hostPath string, target url.URL) http.Handler {
+	handler := httputil.NewSingleHostReverseProxy(&target)
+	return handlePathCombinations(handler, hostname, hostPath, target.Path)
+}
+
+func (hf *HandlerFactory) newRedirectHandler(hostname, hostPath string, target url.URL) http.Handler {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		targetQuery := target.RawQuery
 		redirURL := *r.URL
 		redirURL.Host = target.Host
@@ -94,6 +67,7 @@ func (hf *HandlerFactory) newRedirectHandler(target url.URL) http.Handler {
 		}
 		http.Redirect(w, r, redirURL.String(), http.StatusSeeOther)
 	})
+	return handlePathCombinations(handler, hostname, hostPath, "")
 }
 
 func (hf *HandlerFactory) setupPHP(cgiaddr *url.URL) {
@@ -102,12 +76,11 @@ func (hf *HandlerFactory) setupPHP(cgiaddr *url.URL) {
 	if len(address) == 0 {
 		address = cgiaddr.Path
 	}
-
 	connFactory := gofast.SimpleConnFactory(network, address)
 	hf.phpClientFactory = gofast.SimpleClientFactory(connFactory, 0)
 }
 
-func (hf *HandlerFactory) newPHPHandler(hostname, path, endpoint string) (http.Handler, error) {
+func (hf *HandlerFactory) newPHPHandler(hostname, hostPath, endpoint string) (http.Handler, error) {
 	if hf.phpClientFactory == nil {
 		return nil, fmt.Errorf("PHP not configured")
 	}
@@ -115,21 +88,31 @@ func (hf *HandlerFactory) newPHPHandler(hostname, path, endpoint string) (http.H
 	if err != nil {
 		return nil, err
 	}
-	var trimPath string
+	var targetPath string
 	var sessHandler gofast.SessionHandler
 	if fi.IsDir() {
 		sessHandler = gofast.NewPHPFS(endpoint)(gofast.BasicSession)
-		trimPath = endpoint
+		targetPath = endpoint
 	} else {
 		sessHandler = gofast.NewFileEndpoint(endpoint)(gofast.BasicSession)
-		trimPath = filepath.Dir(endpoint)
+		targetPath = filepath.Dir(endpoint)
 	}
 	handler := gofast.NewHandler(sessHandler, hf.phpClientFactory)
+	return handlePathCombinations(handler, hostname, hostPath, targetPath), nil
+}
+
+func handlePathCombinations(handler http.Handler, hostname, hostPath, targetPath string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ww := NewPathPrefixHTMLResponseWriter(hostname, trimPath, path, w)
+		r.URL.Path = strings.TrimPrefix(r.URL.Path, hostPath)
+		r.URL.RawPath = strings.TrimPrefix(r.URL.RawPath, hostPath)
+		if !strings.HasPrefix(r.URL.Path, "/") {
+			r.URL.Path = "/" + r.URL.Path
+			r.URL.RawPath = "/" + r.URL.RawPath
+		}
+		ww := NewPathPrefixHTMLResponseWriter(hostname, hostPath, targetPath, w)
 		defer ww.Close()
 		handler.ServeHTTP(ww, r)
-	}), nil
+	})
 }
 
 func splitHostnameAndPath(hostname string) (string, string) {
