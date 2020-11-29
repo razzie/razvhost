@@ -2,7 +2,6 @@ package razvhost
 
 import (
 	"net/http"
-	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -16,7 +15,7 @@ type Mux struct {
 }
 
 // Add ...
-func (m *Mux) Add(path string, handler http.Handler, target url.URL) {
+func (m *Mux) Add(path string, handler http.Handler, id string) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -26,12 +25,12 @@ func (m *Mux) Add(path string, handler http.Handler, target url.URL) {
 
 	entry := m.entryMap[path]
 	if entry != nil {
-		entry.add(handler, target)
+		entry.add(handler, id)
 		return
 	}
 
 	entry = &muxEntry{path: path}
-	entry.add(handler, target)
+	entry.add(handler, id)
 	m.entryMap[path] = entry
 
 	for i, other := range m.entries {
@@ -46,13 +45,13 @@ func (m *Mux) Add(path string, handler http.Handler, target url.URL) {
 }
 
 // Remove ...
-func (m *Mux) Remove(path string, target url.URL) {
+func (m *Mux) Remove(path, id string) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
 	entry := m.entryMap[path]
 	if entry != nil {
-		entry.remove(target)
+		entry.remove(id)
 	}
 }
 
@@ -78,13 +77,13 @@ type muxEntry struct {
 	next     uint32
 }
 
-func (e *muxEntry) add(handler http.Handler, target url.URL) {
-	e.handlers = append(e.handlers, muxHandler{handler: handler, target: target})
+func (e *muxEntry) add(handler http.Handler, id string) {
+	e.handlers = append(e.handlers, muxHandler{handler: handler, id: id})
 }
 
-func (e *muxEntry) remove(target url.URL) {
+func (e *muxEntry) remove(id string) {
 	for i, handler := range e.handlers {
-		if handler.target == target {
+		if handler.id == id {
 			e.handlers = append(e.handlers[:i], e.handlers[i+1:]...)
 			return
 		}
@@ -102,5 +101,5 @@ func (e *muxEntry) handler() http.Handler {
 
 type muxHandler struct {
 	handler http.Handler
-	target  url.URL
+	id      string
 }

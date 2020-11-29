@@ -111,7 +111,7 @@ func (s *Server) processEvent(e ProxyEvent) {
 		m := s.proxies[host]
 		s.mtx.RUnlock()
 		if m != nil {
-			m.Remove(path, e.Target)
+			m.Remove(path, e.Target.String())
 		}
 		return
 	}
@@ -130,7 +130,7 @@ func (s *Server) processEvent(e ProxyEvent) {
 	}
 	s.mtx.Unlock()
 
-	m.Add(path, handler, e.Target)
+	m.Add(path, handler, e.Target.String())
 }
 
 // ValidateHost implements autocert.HostPolicy
