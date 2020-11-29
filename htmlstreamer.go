@@ -152,6 +152,18 @@ func (w *pathPrefixHTMLResponseWriter) Close() error {
 }
 
 func updateLocation(loc *string, hostname, hostPath, targetPath string) {
+	join := func(a, b string) string {
+		aslash := strings.HasSuffix(a, "/")
+		bslash := strings.HasPrefix(b, "/")
+		switch {
+		case aslash && bslash:
+			return a + b[1:]
+		case !aslash && !bslash:
+			return a + "/" + b
+		}
+		return a + b
+	}
+
 	u, _ := url.Parse(*loc)
 	if u == nil {
 		return
@@ -163,7 +175,7 @@ func updateLocation(loc *string, hostname, hostPath, targetPath string) {
 		*loc = u.RequestURI()
 	}
 	if strings.HasPrefix(*loc, "/") {
-		*loc = hostPath + strings.TrimPrefix(*loc, targetPath)
+		*loc = join(hostPath, strings.TrimPrefix(*loc, targetPath))
 	}
 }
 
