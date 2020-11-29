@@ -195,15 +195,17 @@ func (s *Server) Serve() error {
 
 // Debug ...
 func (s *Server) Debug(addr string) error {
+	log.Println("Debug interface listening on", addr)
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		parts := strings.SplitN(r.URL.Path, "/", 3)
-		if len(parts) < 2 {
+		uri := strings.SplitN(r.URL.Path, "/", 3)
+		if len(uri) < 2 {
 			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
 		}
-		r.Host = parts[1]
+		r.Host = uri[1]
 		r.URL.Path = strings.TrimPrefix(r.URL.Path, "/"+r.Host)
-		ww := NewPathPrefixHTMLResponseWriter(r.URL.Host, "", "/"+r.Host, w)
+		r.URL.RawPath = strings.TrimPrefix(r.URL.RawPath, "/"+r.Host)
+		ww := NewPathPrefixHTMLResponseWriter(r.URL.Host, "/"+r.Host, "", w)
 		defer ww.Close()
 		s.ServeHTTP(ww, r)
 	})
