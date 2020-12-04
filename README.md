@@ -34,13 +34,13 @@ phpexample2.com -> php:///var/www/mysite/
 
 ## Build
 You can either check out the git repo and build:
-```
+```Shell
 git clone https://github.com/razzie/razvhost.git
 cd razvhost
 make
 ```
 or use the **go** tool:
-```
+```Shell
 go get github.com/razzie/razvhost
 ```
 
@@ -64,6 +64,8 @@ Usage of ./razvhost:
         Watch Docker events to find containers with VIRTUAL_HOST
   -http2
         Enable HTTP2
+  -no-server-header
+        Disable 'Server: razvhost/<version>' header in responses
   -nocert
         Disable HTTPS and certificate handling
   -php-addr string
@@ -71,12 +73,12 @@ Usage of ./razvhost:
 ```
 
 If you intend to run razvhost using **supervisor**, here is an example configuration:
-```
+```INI
 [program:razvhost]
 command=/razvhost/razvhost -http2
 user=
-stderr_logfile = /var/log/supervisor/razvhost-err.log
-stdout_logfile = /var/log/supervisor/razvhost-stdout.log
+stderr_logfile=/var/log/supervisor/razvhost-err.log
+stdout_logfile=/var/log/supervisor/razvhost-stdout.log
 directory=/razvhost/
 autostart=true
 autorestart=true
