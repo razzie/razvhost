@@ -119,6 +119,8 @@ func (s *Server) processEvent(e ProxyEvent) {
 	handler, err := s.factory.Handler(e.Hostname, e.Target)
 	if err != nil {
 		log.Println(err)
+		e.Up = false
+		log.Println("CONFIG:", e.String())
 		return
 	}
 
