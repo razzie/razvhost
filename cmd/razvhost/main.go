@@ -14,6 +14,7 @@ var (
 	ConfigFile        string
 	CertsDir          string
 	NoCert            bool
+	NoServerHeader    bool
 	WatchDockerEvents bool
 	EnableHTTP2       bool
 	DiscardHeaders    string
@@ -27,6 +28,7 @@ func init() {
 	flag.StringVar(&ConfigFile, "cfg", "config", "Config file")
 	flag.StringVar(&CertsDir, "certs", "certs", "Directory to store certificates in")
 	flag.BoolVar(&NoCert, "nocert", false, "Disable HTTPS and certificate handling")
+	flag.BoolVar(&NoServerHeader, "no-server-header", false, "Disable 'Server: razvhost/<version>' header in responses")
 	flag.BoolVar(&WatchDockerEvents, "docker", false, "Watch Docker events to find containers with VIRTUAL_HOST")
 	flag.BoolVar(&EnableHTTP2, "http2", false, "Enable HTTP2")
 	flag.StringVar(&DiscardHeaders, "discard-headers", "", "Comma separated list of http headers to discard")
@@ -38,6 +40,15 @@ func init() {
 }
 
 func main() {
+	var serverHeader map[string]string
+	if !NoServerHeader {
+		if len(version) > 0 {
+			serverHeader = map[string]string{"Server": "razvhost/" + version}
+		} else {
+			serverHeader = map[string]string{"Server": "razvhost"}
+		}
+	}
+
 	log.Println("Starting razvhost", version)
 	cfg := &razvhost.ServerConfig{
 		ConfigFile:        ConfigFile,
@@ -46,7 +57,7 @@ func main() {
 		WatchDockerEvents: WatchDockerEvents,
 		EnableHTTP2:       EnableHTTP2,
 		DiscardHeaders:    append(strings.Split(DiscardHeaders, ","), razvhost.DefaultDiscardHeaders...),
-		ExtraHeaders:      map[string]string{"Server": "razvhost/" + version},
+		ExtraHeaders:      serverHeader,
 		PHPAddr:           PHPAddr,
 	}
 	srv := razvhost.NewServer(cfg)
