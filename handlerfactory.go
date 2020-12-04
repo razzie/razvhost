@@ -113,7 +113,7 @@ func handlePathCombinations(handler http.Handler, hostname, hostPath, targetPath
 			r.URL.Path = "/" + r.URL.Path
 			r.URL.RawPath = "/" + r.URL.RawPath
 		}
-		ww := NewPathPrefixHTMLResponseWriter(hostname, hostPath, targetPath, w)
+		ww := NewPathPrefixHTMLResponseWriter(hostname, hostPath, targetPath, w, nil)
 		defer ww.Close()
 		handler.ServeHTTP(ww, r)
 	})

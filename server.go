@@ -205,7 +205,7 @@ func (s *Server) Debug(addr string) error {
 		r.Host = uri[1]
 		r.URL.Path = strings.TrimPrefix(r.URL.Path, "/"+r.Host)
 		r.URL.RawPath = strings.TrimPrefix(r.URL.RawPath, "/"+r.Host)
-		ww := NewPathPrefixHTMLResponseWriter(r.URL.Host, "/"+r.Host, "", w)
+		ww := NewPathPrefixHTMLResponseWriter(r.URL.Host, "/"+r.Host, "", w, nil)
 		defer ww.Close()
 		s.ServeHTTP(ww, r)
 	})

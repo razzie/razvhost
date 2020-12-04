@@ -48,7 +48,7 @@ func (h *HTMLStreamer) Close() error {
 }
 
 // NewPathPrefixHTMLStreamer ...
-func NewPathPrefixHTMLStreamer(hostname, hostPath, targetPath string, r io.ReadCloser) io.ReadCloser {
+func NewPathPrefixHTMLStreamer(hostname, hostPath, targetPath string, r io.ReadCloser, contentLen *int64) io.ReadCloser {
 	modifyToken := func(token *html.Token) {
 		if token.Type != html.StartTagToken && token.Type != html.SelfClosingTagToken {
 			return
@@ -56,7 +56,10 @@ func NewPathPrefixHTMLStreamer(hostname, hostPath, targetPath string, r io.ReadC
 		for i := range token.Attr {
 			switch token.Attr[i].Key {
 			case "href", "src", "action", "formaction":
-				updateLocation(&token.Attr[i].Val, hostname, hostPath, targetPath)
+				diff := updateLocation(&token.Attr[i].Val, hostname, hostPath, targetPath)
+				if contentLen != nil {
+					*contentLen += int64(diff)
+				}
 			}
 		}
 	}
@@ -67,12 +70,12 @@ func NewPathPrefixHTMLStreamer(hostname, hostPath, targetPath string, r io.ReadC
 }
 
 // NewPathPrefixHTMLResponseWriter ...
-func NewPathPrefixHTMLResponseWriter(hostname, hostPath, targetPath string, w http.ResponseWriter) ResponseWriterCloser {
+func NewPathPrefixHTMLResponseWriter(hostname, hostPath, targetPath string, w http.ResponseWriter, contentLen *int64) ResponseWriterCloser {
 	var wg sync.WaitGroup
 	var reader io.ReadCloser
 	var writer io.WriteCloser
 	reader, writer = io.Pipe()
-	reader = NewPathPrefixHTMLStreamer(hostname, hostPath, targetPath, reader)
+	reader = NewPathPrefixHTMLStreamer(hostname, hostPath, targetPath, reader, contentLen)
 	wg.Add(1)
 	go func() {
 		if _, err := io.Copy(w, reader); err != nil {
@@ -88,6 +91,7 @@ func NewPathPrefixHTMLResponseWriter(hostname, hostPath, targetPath string, w ht
 		hostPath:   hostPath,
 		targetPath: targetPath,
 		hostname:   hostname,
+		contentLen: contentLen,
 	}
 }
 
@@ -105,6 +109,7 @@ type pathPrefixHTMLResponseWriter struct {
 	hostPath   string
 	targetPath string
 	hostname   string
+	contentLen *int64
 	isHTML     bool
 	headerSent bool
 }
@@ -151,7 +156,8 @@ func (w *pathPrefixHTMLResponseWriter) Close() error {
 	return nil
 }
 
-func updateLocation(loc *string, hostname, hostPath, targetPath string) {
+func updateLocation(loc *string, hostname, hostPath, targetPath string) int {
+	origLen := len(*loc)
 	join := func(a, b string) string {
 		aslash := strings.HasSuffix(a, "/")
 		bslash := strings.HasPrefix(b, "/")
@@ -166,17 +172,18 @@ func updateLocation(loc *string, hostname, hostPath, targetPath string) {
 
 	u, _ := url.Parse(*loc)
 	if u == nil {
-		return
+		return 0
 	}
 	if len(u.Host) > 0 {
 		if u.Host != hostname {
-			return
+			return 0
 		}
 		*loc = u.RequestURI()
 	}
 	if strings.HasPrefix(*loc, "/") {
 		*loc = join(hostPath, strings.TrimPrefix(*loc, targetPath))
 	}
+	return len(*loc) - origLen
 }
 
 func tokenToString(t html.Token) string {
