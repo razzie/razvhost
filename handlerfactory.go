@@ -67,7 +67,7 @@ func (hf *HandlerFactory) newRedirectHandler(hostname, hostPath string, target u
 		}
 		http.Redirect(w, r, redirURL.String(), http.StatusSeeOther)
 	})
-	return handlePathCombinations(handler, hostname, hostPath, "")
+	return handlePathCombinations(handler, "", hostPath, "")
 }
 
 func (hf *HandlerFactory) setupPHP(cgiaddr *url.URL) {
