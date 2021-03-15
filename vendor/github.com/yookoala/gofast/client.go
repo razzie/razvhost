@@ -18,6 +18,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -31,6 +32,8 @@ const (
 	RoleResponder Role = iota + 1
 	RoleAuthorizer
 	RoleFilter
+
+	MaxRequestID = ^uint16(0)
 )
 
 // NewRequest returns a standard FastCGI request
@@ -64,54 +67,53 @@ type Request struct {
 }
 
 type idPool struct {
-	IDs chan uint16
+	IDs uint16
+
+	Used *sync.Map
+	Lock *sync.Mutex
 }
 
 // AllocID implements Client.AllocID
 func (p *idPool) Alloc() uint16 {
-	return <-p.IDs
+	p.Lock.Lock()
+next:
+	idx := p.IDs
+	if idx == MaxRequestID {
+		// reset
+		p.IDs = 0
+	}
+	p.IDs++
+
+	if _, inuse := p.Used.Load(idx); inuse {
+		// Allow other go-routine to take priority
+		// to prevent spinlock here
+		runtime.Gosched()
+		goto next
+	}
+
+	p.Used.Store(idx, struct{}{})
+	p.Lock.Unlock()
+
+	return idx
 }
 
 // ReleaseID implements Client.ReleaseID
 func (p *idPool) Release(id uint16) {
-	go func() {
-		// release the ID back to channel for reuse
-		// use goroutine to prev0, ent blocking ReleaseID
-		p.IDs <- id
-	}()
+	p.Used.Delete(id)
 }
 
-func newIDs(limit uint32) (p idPool) {
-
-	// sanatize limit
-	if limit == 0 || limit > 65536 {
-		limit = 65536
+func newIDs() *idPool {
+	return &idPool{
+		Used: new(sync.Map),
+		Lock: new(sync.Mutex),
+		IDs:  uint16(1),
 	}
-
-	// pool requestID for the client
-	//
-	// requestID: Identifies the FastCGI request to which the record belongs.
-	// The Web server re-uses FastCGI request IDs; the application
-	// keeps track of the current state of each request ID on a given
-	// transport connection.
-	//
-	// Ref: https://fast-cgi.github.io/spec#33-records
-	ids := make(chan uint16)
-	go func(maxID uint16) {
-		for i := uint16(0); i < maxID; i++ {
-			ids <- i
-		}
-		ids <- uint16(maxID)
-	}(uint16(limit - 1))
-
-	p.IDs = ids
-	return
 }
 
 // client is the default implementation of Client
 type client struct {
 	conn *conn
-	ids  idPool
+	ids  *idPool
 }
 
 // writeRequest writes params and stdin to the FastCGI application
@@ -263,18 +265,18 @@ func (c *client) Do(req *Request) (resp *ResponsePipe, err error) {
 		}
 	}
 
+	// check if connection exists
+	if c.conn == nil {
+		err = fmt.Errorf("client connection has been closed")
+		return
+	}
+
 	// allocate request ID
 	reqID := c.ids.Alloc()
 
 	// create response pipe
 	resp = NewResponsePipe()
 	rwError, allDone := make(chan error), make(chan int)
-
-	// check if connection exists
-	if c.conn == nil {
-		err = fmt.Errorf("client connection has been closed")
-		return
-	}
 
 	// if there is a raw request, use the context deadline
 	var ctx context.Context
@@ -384,13 +386,7 @@ type ClientFactory func() (Client, error)
 
 // SimpleClientFactory returns a ClientFactory implementation
 // with the given ConnFactory.
-//
-// limit is the maximum number of request that the
-// applcation support. 0 means the maximum number
-// available for 16bit request id (65536).
-// Default 0.
-//
-func SimpleClientFactory(connFactory ConnFactory, limit uint32) ClientFactory {
+func SimpleClientFactory(connFactory ConnFactory) ClientFactory {
 	return func() (c Client, err error) {
 		// connect to given network address
 		conn, err := connFactory()
@@ -401,7 +397,7 @@ func SimpleClientFactory(connFactory ConnFactory, limit uint32) ClientFactory {
 		// create client
 		c = &client{
 			conn: newConn(conn),
-			ids:  newIDs(limit),
+			ids:  newIDs(),
 		}
 		return
 	}

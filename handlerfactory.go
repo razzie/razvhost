@@ -77,7 +77,7 @@ func (hf *HandlerFactory) setupPHP(cgiaddr *url.URL) {
 		address = cgiaddr.Path
 	}
 	connFactory := gofast.SimpleConnFactory(network, address)
-	hf.phpClientFactory = gofast.SimpleClientFactory(connFactory, 0)
+	hf.phpClientFactory = gofast.SimpleClientFactory(connFactory)
 }
 
 func (hf *HandlerFactory) newPHPHandler(hostname, hostPath, endpoint string) (http.Handler, error) {

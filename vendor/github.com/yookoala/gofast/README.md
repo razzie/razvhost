@@ -1,4 +1,4 @@
-# gofast [![GoDoc][godoc-badge]][godoc] [![Go Report Card][goreport-badge]][goreport] [![Travis CI results][travis-badge]][travis]
+# gofast [![GoDoc][godoc-badge]][godoc] [![Go Report Card][goreport-badge]][goreport] [![Travis CI results][travis-badge]][travis] [![GitHub Action Test result][github-action-badge]][github-action]
 
 **gofast** is a [FastCGI][fastcgi] "client" library written purely in
 [golang][golang].
@@ -25,6 +25,8 @@
 [godoc-badge]: https://godoc.org/github.com/yookoala/gofast?status.svg
 [travis]: https://travis-ci.org/yookoala/gofast?branch=master
 [travis-badge]: https://api.travis-ci.org/yookoala/gofast.svg?branch=master
+[github-action]: https://github.com/yookoala/gofast/actions?query=workflow%3ATests+branch%3Amaster
+[github-action-badge]: https://github.com/yookoala/gofast/workflows/Tests/badge.svg?branch=master
 [goreport]: https://goreportcard.com/report/github.com/yookoala/gofast
 [goreport-badge]: https://goreportcard.com/badge/github.com/yookoala/gofast
 [golang]: https://golang.org
@@ -85,7 +87,7 @@ your **application** component elsewhere.
 package main
 
 import (
-	"fmt"
+	"log"
 	"net/http"
 	"os"
 
@@ -102,7 +104,7 @@ func main() {
 	// route all requests to a single php file
 	http.Handle("/", gofast.NewHandler(
 		gofast.NewFileEndpoint("/var/www/html/index.php")(gofast.BasicSession),
-		gofast.SimpleClientFactory(connFactory, 0),
+		gofast.SimpleClientFactory(connFactory),
 	))
 
 	// serve at 8080 port
@@ -146,12 +148,12 @@ func main() {
 	// handles static assets in the assets folder
 	http.Handle("/assets/",
 		http.StripPrefix("/assets/",
-			http.FileSystem(http.Dir("/var/www/html/assets"))))
+			http.FileServer(http.FileSystem(http.Dir("/var/www/html/assets")))))
 
 	// route all requests to relevant PHP file
 	http.Handle("/", gofast.NewHandler(
 		gofast.NewPHPFS("/var/www/html")(gofast.BasicSession),
-		gofast.SimpleClientFactory(connFactory, 0),
+		gofast.SimpleClientFactory(connFactory),
 	))
 
 	// serve at 8080 port
@@ -202,7 +204,7 @@ func main() {
 
 	// a custom authentication handler
 	customAuth := func(inner gofast.SessionHandler) gofast.SessionHandler {
-		return func(client gofast.Client, req *gofast.Request) (gofast.ResponsePipe, error) {
+		return func(client gofast.Client, req *gofast.Request) (*gofast.ResponsePipe, error) {
 			user, err := someCustomAuth(
 				req.Raw.Header.Get("Authorization"))
 			if err != nil {
@@ -227,7 +229,7 @@ func main() {
 	// route all requests to a single php file
 	http.Handle("/", gofast.NewHandler(
 		gofast.NewFileEndpoint("/var/www/html/index.php")(sess),
-		gofast.SimpleClientFactory(connFactory, 0),
+		gofast.SimpleClientFactory(connFactory),
 	))
 
 	// serve at 8080 port
@@ -306,7 +308,7 @@ func myApp() http.Handler {
 func main() {
 	address := os.Getenv("FASTCGI_ADDR")
 	connFactory := gofast.SimpleConnFactory("tcp", address)
-	clientFactory := gofast.SimpleClientFactory(connFactory, 0)
+	clientFactory := gofast.SimpleClientFactory(connFactory)
 
 	// authorization with php
 	authSess := gofast.Chain(
@@ -359,7 +361,7 @@ import (
 func main() {
 	address := os.Getenv("FASTCGI_ADDR")
 	connFactory := gofast.SimpleConnFactory("tcp", address)
-	clientFactory := gofast.SimpleClientFactory(connFactory, 0)
+	clientFactory := gofast.SimpleClientFactory(connFactory)
 
 	// Note: The local file system "/var/www/html/" only need to be
 	// local to web server. No need for the FastCGI application to access
@@ -418,7 +420,7 @@ func main() {
 	// handle all scripts in document root
 	// extra pooling layer
 	pool := gofast.NewClientPool(
-		gofast.SimpleClientFactory(connFactory, 0),
+		gofast.SimpleClientFactory(connFactory),
 		10, // buffer size for pre-created client-connection
 		30*time.Second, // life span of a client before expire
 	)

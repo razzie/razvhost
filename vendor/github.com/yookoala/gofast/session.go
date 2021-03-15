@@ -110,6 +110,7 @@ func BasicParamsMap(inner SessionHandler) SessionHandler {
 		remoteAddr, remotePort, _ := net.SplitHostPort(r.RemoteAddr)
 		host, serverPort, err := net.SplitHostPort(r.Host)
 		if err != nil {
+			host = r.Host
 			if isHTTPS {
 				serverPort = "443"
 			} else {
@@ -159,19 +160,10 @@ func MapRemoteHost(inner SessionHandler) SessionHandler {
 //  SCRIPT_NAME
 func FilterAuthReqParams(inner SessionHandler) SessionHandler {
 	return func(client Client, req *Request) (*ResponsePipe, error) {
-		if _, ok := req.Params["CONTENT_LENGTH"]; ok {
-			delete(req.Params, "CONTENT_LENGTH")
-		}
-		if _, ok := req.Params["PATH_INFO"]; ok {
-			delete(req.Params, "PATH_INFO")
-		}
-		if _, ok := req.Params["PATH_TRANSLATED"]; ok {
-			delete(req.Params, "PATH_TRANSLATED")
-		}
-		if _, ok := req.Params["SCRIPT_NAME"]; ok {
-			delete(req.Params, "SCRIPT_NAME")
-		}
-
+		delete(req.Params, "CONTENT_LENGTH")
+		delete(req.Params, "PATH_INFO")
+		delete(req.Params, "PATH_TRANSLATED")
+		delete(req.Params, "SCRIPT_NAME")
 		return inner(client, req)
 	}
 }
@@ -206,6 +198,8 @@ type FileSystemRouter struct {
 //  DOCUMENT_ROOT
 //
 func (fs *FileSystemRouter) Router() Middleware {
+	pathinfoRe := regexp.MustCompile(`^(.+\.php)(/?.+)$`)
+	docroot := filepath.Join(fs.DocRoot) // converts to absolute path
 	return func(inner SessionHandler) SessionHandler {
 		return func(client Client, req *Request) (*ResponsePipe, error) {
 
@@ -215,24 +209,30 @@ func (fs *FileSystemRouter) Router() Middleware {
 			fastcgiScriptName := r.URL.Path
 
 			var fastcgiPathInfo string
-			pathinfoRe := regexp.MustCompile(`^(.+\.php)(/?.+)$`)
-			if matches := pathinfoRe.FindStringSubmatch(fastcgiScriptName); len(matches) > 0 {
+			if matches := pathinfoRe.Copy().FindStringSubmatch(fastcgiScriptName); len(matches) > 0 {
 				fastcgiScriptName, fastcgiPathInfo = matches[1], matches[2]
 			}
 
+			// If accessing a directory, try accessing document index file
+			if strings.HasSuffix(fastcgiScriptName, "/") {
+				fastcgiScriptName = path.Join(fastcgiScriptName, "index.php")
+			}
+
 			req.Params["PATH_INFO"] = fastcgiPathInfo
-			req.Params["PATH_TRANSLATED"] = filepath.Join(fs.DocRoot, fastcgiPathInfo)
+			req.Params["PATH_TRANSLATED"] = filepath.Join(docroot, fastcgiPathInfo)
 			req.Params["SCRIPT_NAME"] = fastcgiScriptName
-			req.Params["SCRIPT_FILENAME"] = filepath.Join(fs.DocRoot, fastcgiScriptName)
+			req.Params["SCRIPT_FILENAME"] = filepath.Join(docroot, fastcgiScriptName)
 			req.Params["DOCUMENT_URI"] = r.URL.Path
-			req.Params["DOCUMENT_ROOT"] = fs.DocRoot
+			req.Params["DOCUMENT_ROOT"] = docroot
+
+			// check if the script filename is within docroot.
+			// triggers error if not.
+			if !strings.HasPrefix(req.Params["SCRIPT_FILENAME"], docroot) {
+				err := fmt.Errorf("error: access path outside of filesystem docroot")
+				return nil, err
+			}
 
 			// handle directory index
-			urlPath := r.URL.Path
-			if strings.HasSuffix(urlPath, "/") {
-				urlPath = path.Join(urlPath, "index.php")
-			}
-			req.Params["SCRIPT_FILENAME"] = path.Join(fs.DocRoot, urlPath)
 
 			return inner(client, req)
 		}
@@ -251,6 +251,12 @@ func (fs *FileSystemRouter) Router() Middleware {
 func MapHeader(inner SessionHandler) SessionHandler {
 	return func(client Client, req *Request) (*ResponsePipe, error) {
 		r := req.Raw
+
+		// Explicitly map raw host field because golang core library seems to remove
+		// the header field.
+		if r.Host != "" {
+			req.Params["HTTP_HOST"] = r.Host
+		}
 
 		// http header
 		for k, v := range r.Header {
