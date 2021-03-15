@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"golang.org/x/net/html"
+	"golang.org/x/net/html/atom"
 )
 
 // HTMLStreamer ...
@@ -19,6 +20,7 @@ type HTMLStreamer struct {
 	ModifyToken func(*html.Token)
 	buffer      []byte
 	z           *html.Tokenizer
+	noEscape    int
 }
 
 // Read implements io.Reader
@@ -34,6 +36,18 @@ func (h *HTMLStreamer) Read(p []byte) (n int, err error) {
 		token := h.z.Token()
 		if h.ModifyToken != nil {
 			h.ModifyToken(&token)
+		}
+		switch token.DataAtom {
+		case atom.Textarea, atom.Title, atom.Script, atom.Style:
+			if token.Type == html.StartTagToken {
+				h.noEscape++
+			}
+			if token.Type == html.EndTagToken {
+				h.noEscape--
+			}
+		}
+		if token.Type == html.TextToken && h.noEscape <= 0 {
+			token.Data = html.EscapeString(token.Data)
 		}
 		h.buffer = []byte(tokenToString(token))
 	}
