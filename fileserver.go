@@ -23,7 +23,7 @@ func FileServer(fs http.FileSystem) http.Handler {
 		uri := path.Clean(r.URL.Path)
 		file, err := fs.Open(uri)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
 		defer file.Close()

@@ -45,7 +45,14 @@ func (hf *HandlerFactory) Handler(hostname string, target url.URL) (handler http
 }
 
 func (hf *HandlerFactory) newFileServer(hostname, hostPath, dir string) http.Handler {
-	handler := FileServer(Directory(dir))
+	var handler http.Handler
+	if info, _ := os.Stat(dir); info != nil && !info.IsDir() { // not a dir
+		handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.ServeFile(w, r, dir)
+		})
+	} else {
+		handler = FileServer(Directory(dir))
+	}
 	return handlePathCombinations(handler, hostname, hostPath, "")
 }
 
