@@ -122,6 +122,8 @@ func (hf *HandlerFactory) newPHPHandler(hostname, hostPath, endpoint string) (ht
 
 func (hf *HandlerFactory) newGoWasmHandler(hostname, hostPath, wasmFile string) http.Handler {
 	cleanHostPath := path.Clean(hostPath)
+	wasmJs := path.Join(hostPath, "go-wasm.js")
+	wasmMain := path.Join(hostPath, "main.wasm")
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case cleanHostPath:
@@ -131,13 +133,15 @@ func (hf *HandlerFactory) newGoWasmHandler(hostname, hostPath, wasmFile string) 
 			defer file.Close()
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			io.Copy(w, file)
-		case path.Join(hostPath, "go-wasm.js"):
+		case wasmJs:
 			file, _ := assets.Open("assets/go-wasm.js")
 			defer file.Close()
 			w.Header().Set("Content-Type", "text/javascript")
 			io.Copy(w, file)
-		case path.Join(hostPath, "main.wasm"):
+		case wasmMain:
 			http.ServeFile(w, r, wasmFile)
+		default:
+			http.Error(w, "Not found", http.StatusNotFound)
 		}
 	})
 }
