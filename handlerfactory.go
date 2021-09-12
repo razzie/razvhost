@@ -1,16 +1,22 @@
 package razvhost
 
 import (
+	"embed"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
 	"github.com/yookoala/gofast"
 )
+
+//go:embed assets/*
+var assets embed.FS
 
 // HandlerFactory ...
 type HandlerFactory struct {
@@ -38,6 +44,8 @@ func (hf *HandlerFactory) Handler(hostname string, target url.URL) (handler http
 		handler = hf.newRedirectHandler(hostname, hostPath, target)
 	case "php":
 		handler, err = hf.newPHPHandler(hostname, hostPath, target.Host+target.Path)
+	case "go-wasm":
+		handler = hf.newGoWasmHandler(hostname, hostPath, target.Host+target.Path)
 	default:
 		err = fmt.Errorf("unknown target URL scheme: %s", target.Scheme)
 	}
@@ -110,6 +118,28 @@ func (hf *HandlerFactory) newPHPHandler(hostname, hostPath, endpoint string) (ht
 	}
 	handler := gofast.NewHandler(sessHandler, hf.phpClientFactory)
 	return handlePathCombinations(handler, hostname, hostPath, targetPath), nil
+}
+
+func (hf *HandlerFactory) newGoWasmHandler(hostname, hostPath, wasmFile string) http.Handler {
+	cleanHostPath := path.Clean(hostPath)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case cleanHostPath:
+			http.Redirect(w, r, cleanHostPath+"/", http.StatusSeeOther)
+		case cleanHostPath + "/":
+			file, _ := assets.Open("assets/go-wasm.html")
+			defer file.Close()
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			io.Copy(w, file)
+		case path.Join(hostPath, "go-wasm.js"):
+			file, _ := assets.Open("assets/go-wasm.js")
+			defer file.Close()
+			w.Header().Set("Content-Type", "text/javascript")
+			io.Copy(w, file)
+		case path.Join(hostPath, "main.wasm"):
+			http.ServeFile(w, r, wasmFile)
+		}
+	})
 }
 
 func handlePathCombinations(handler http.Handler, hostname, hostPath, targetPath string) http.Handler {
