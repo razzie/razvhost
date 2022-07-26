@@ -4,6 +4,7 @@ import (
 	"embed"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -12,6 +13,11 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/jszwec/s3fs"
 	"github.com/yookoala/gofast"
 )
 
@@ -42,6 +48,8 @@ func (hf *HandlerFactory) Handler(hostname string, target url.URL) (handler http
 		handler = hf.newProxyHandler(hostname, hostPath, target)
 	case "redirect":
 		handler = hf.newRedirectHandler(hostname, hostPath, target)
+	case "s3":
+		handler, err = hf.newS3Handler(hostname, hostPath, target)
 	case "php":
 		handler, err = hf.newPHPHandler(hostname, hostPath, target.Host+target.Path)
 	case "go-wasm":
@@ -83,6 +91,36 @@ func (hf *HandlerFactory) newRedirectHandler(hostname, hostPath string, target u
 		http.Redirect(w, r, redirURL.String(), http.StatusSeeOther)
 	})
 	return handlePathCombinations(handler, "", hostPath, "")
+}
+
+func (hf *HandlerFactory) newS3Handler(hostname, hostPath string, target url.URL) (http.Handler, error) {
+	conf := aws.NewConfig().WithCredentials(credentials.AnonymousCredentials)
+	bucket := ""
+	if strings.Contains(target.Host, ".") {
+		bucketAndEndpoint := strings.SplitN(target.Host, ".", 2)
+		bucket = bucketAndEndpoint[0]
+		conf = conf.WithEndpoint(bucketAndEndpoint[1])
+	} else {
+		bucket = target.Host
+	}
+	if target.Query().Has("region") {
+		conf = conf.WithRegion(target.Query().Get("region"))
+	}
+	sess, err := session.NewSession(conf)
+	if err != nil {
+		return nil, err
+	}
+	prefix := target.Path
+	if len(prefix) <= 1 {
+		prefix = "."
+	}
+	var fsys fs.FS = s3fs.New(s3.New(sess), bucket)
+	fsys, err = fs.Sub(fsys, prefix)
+	if err != nil {
+		return nil, err
+	}
+	handler := FileServer(http.FS(fsys))
+	return handlePathCombinations(handler, hostname, hostPath, ""), nil
 }
 
 func (hf *HandlerFactory) setupPHP(cgiaddr *url.URL) {

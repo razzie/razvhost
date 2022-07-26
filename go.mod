@@ -3,7 +3,9 @@ module github.com/razzie/razvhost
 go 1.18
 
 require (
+	github.com/aws/aws-sdk-go v1.44.63
 	github.com/fsouza/go-dockerclient v1.8.1
+	github.com/jszwec/s3fs v0.3.2
 	github.com/mssola/user_agent v0.5.3
 	github.com/yookoala/gofast v0.6.0
 	golang.org/x/crypto v0.0.0-20220722155217-630584e8d5aa
@@ -22,6 +24,7 @@ require (
 	github.com/docker/go-units v0.4.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
+	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/moby/sys/mount v0.3.3 // indirect
 	github.com/moby/sys/mountinfo v0.6.2 // indirect
 	github.com/moby/term v0.0.0-20210619224110-3f7ff695adc6 // indirect

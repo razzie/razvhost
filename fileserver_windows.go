@@ -7,6 +7,8 @@ import (
 )
 
 func getCreationTime(fi os.FileInfo) time.Time {
-	d := fi.Sys().(*syscall.Win32FileAttributeData)
-	return time.Unix(0, d.CreationTime.Nanoseconds())
+	if d, ok := fi.Sys().(*syscall.Win32FileAttributeData); ok {
+		return time.Unix(0, d.CreationTime.Nanoseconds())
+	}
+	return fi.ModTime()
 }

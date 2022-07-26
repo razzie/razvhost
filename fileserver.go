@@ -3,6 +3,7 @@ package razvhost
 import (
 	"fmt"
 	"html/template"
+	"io"
 	"net/http"
 	"os"
 	"path"
@@ -35,6 +36,10 @@ func FileServer(fs http.FileSystem) http.Handler {
 		if fi.IsDir() {
 			handleDir(w, file, uri)
 			return
+		}
+		if _, err := file.Seek(0, io.SeekStart); err != nil {
+			w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", fi.Name()))
+			io.Copy(w, file)
 		}
 		http.ServeContent(w, r, fi.Name(), fi.ModTime(), file)
 	})

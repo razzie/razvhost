@@ -29,6 +29,7 @@ example.com/files -> file:///var/www/public/
 loadbalance.com -> http://localhost:8081 http://localhost:8082
 fileserver.com -> file:///var/www/public/
 redirect.com -> redirect://github.com/razzie/razvhost
+mybucket.com -> s3://mybucket/prefix?region=eu-central-1
 phpexample.com -> php:///var/www/index.php
 phpexample2.com -> php:///var/www/mysite/`
 
