@@ -231,7 +231,7 @@ func (s *Server) loadConfig() error {
 		return nil
 	}
 
-	events, err := ReadConfigFile(s.config.ConfigFile)
+	entries, err := ReadConfigFile(s.config.ConfigFile)
 	if err != nil {
 		if os.IsNotExist(err) {
 			if err := ioutil.WriteFile(s.config.ConfigFile, []byte(ExampleConfig), 0777); err == nil {
@@ -242,7 +242,7 @@ func (s *Server) loadConfig() error {
 		return err
 	}
 
-	s.Process(events)
+	s.Process(entries.ToProxyEvents())
 	return nil
 }
 
