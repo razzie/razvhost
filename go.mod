@@ -1,22 +1,38 @@
 module github.com/razzie/razvhost
 
-go 1.16
+go 1.18
 
 require (
-	github.com/Microsoft/hcsshim v0.8.15 // indirect
-	github.com/containerd/cgroups v0.0.0-20210114181951-8a68de567b68 // indirect
-	github.com/containerd/continuity v0.0.0-20210313171317-968621f0704d // indirect
-	github.com/docker/docker v20.10.5+incompatible // indirect
-	github.com/fsouza/go-dockerclient v1.7.2
-	github.com/moby/sys/mountinfo v0.4.1 // indirect
-	github.com/mssola/user_agent v0.5.2
-	github.com/sirupsen/logrus v1.8.1 // indirect
+	github.com/fsouza/go-dockerclient v1.8.1
+	github.com/mssola/user_agent v0.5.3
 	github.com/yookoala/gofast v0.6.0
+	golang.org/x/crypto v0.0.0-20220722155217-630584e8d5aa
+	golang.org/x/net v0.0.0-20220725212005-46097bf591d3
+)
+
+require (
+	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
+	github.com/Microsoft/go-winio v0.5.2 // indirect
+	github.com/Microsoft/hcsshim v0.9.4 // indirect
+	github.com/containerd/cgroups v1.0.4 // indirect
+	github.com/containerd/containerd v1.6.6 // indirect
+	github.com/containerd/continuity v0.3.0 // indirect
+	github.com/docker/docker v20.10.17+incompatible // indirect
+	github.com/docker/go-connections v0.4.0 // indirect
+	github.com/docker/go-units v0.4.0 // indirect
+	github.com/gogo/protobuf v1.3.2 // indirect
+	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
+	github.com/moby/sys/mount v0.3.3 // indirect
+	github.com/moby/sys/mountinfo v0.6.2 // indirect
+	github.com/moby/term v0.0.0-20210619224110-3f7ff695adc6 // indirect
+	github.com/morikuni/aec v1.0.0 // indirect
+	github.com/opencontainers/go-digest v1.0.0 // indirect
+	github.com/opencontainers/image-spec v1.0.3-0.20211202183452-c5a74bcca799 // indirect
+	github.com/opencontainers/runc v1.1.3 // indirect
+	github.com/pkg/errors v0.9.1 // indirect
+	github.com/sirupsen/logrus v1.9.0 // indirect
 	go.opencensus.io v0.23.0 // indirect
-	golang.org/x/crypto v0.0.0-20210314154223-e6e6c4f2bb5b
-	golang.org/x/net v0.0.0-20210226172049-e18ecbb05110
-	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c // indirect
-	golang.org/x/sys v0.0.0-20210314195730-07df6a141424 // indirect
-	golang.org/x/text v0.3.5 // indirect
-	golang.org/x/tools v0.1.0 // indirect
+	golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f // indirect
+	golang.org/x/text v0.3.7 // indirect
+	golang.org/x/tools v0.1.11 // indirect
 )
