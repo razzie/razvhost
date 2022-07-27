@@ -19,8 +19,8 @@ Virtual hosting/reverse proxy with TLS termination and automatic certificate man
 * Request logging
 
 ## Configuration
-By default razvhost tries to read configuration from `config` file in the working directory and creates a demo config file if not found.
-Alternatively you can specify the config file location with `-config <file>` command line arg.
+By default razvhost tries to read configuration from `config` file in the working directory.
+Alternatively you can specify the config file location with `-cfg <config file>` command line arg.
 
 An example configuration:
 ```
