@@ -7,6 +7,8 @@ import (
 	"net/url"
 	"os"
 	"strings"
+
+	"github.com/fsnotify/fsnotify"
 )
 
 var DefaultDiscardHeaders = []string{
@@ -21,28 +23,112 @@ var DefaultDiscardHeaders = []string{
 	"forwarded",
 }
 
-// ExampleConfig ...
-const ExampleConfig = `# comment
-example.com alias.com -> http://localhost:8080
-example.com/files -> file:///var/www/public/
-loadbalance.com -> http://localhost:8081 http://localhost:8082
-fileserver.com -> file:///var/www/public/
-redirect.com -> redirect://github.com/razzie/razvhost
-mybucket.com -> s3://mybucket/prefix?region=eu-central-1
-phpexample.com -> php:///var/www/index.php
-phpexample2.com -> php:///var/www/mysite/`
-
-// ConfigEntry ...
-type ConfigEntry struct {
-	Hostnames []string
-	Targets   []url.URL
+type Config struct {
+	C           <-chan ProxyEvent
+	events      chan ProxyEvent
+	filename    string
+	watcher     *fsnotify.Watcher
+	prevEntries []ProxyEntry
 }
 
-// ConfigEntryList ...
-type ConfigEntryList []ConfigEntry
+func NewConfig(filename string) (*Config, error) {
+	entries, err := ReadConfigFile(filename)
+	if err != nil {
+		return nil, err
+	}
 
-// ReadConfigFile ...
-func ReadConfigFile(filename string) (ConfigEntryList, error) {
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return nil, err
+	}
+	if err := watcher.Add(filename); err != nil {
+		watcher.Close()
+		return nil, err
+	}
+
+	events := make(chan ProxyEvent, len(entries))
+	for _, entry := range entries {
+		events <- ProxyEvent{
+			ProxyEntry: entry,
+			Up:         true,
+		}
+	}
+
+	cfg := &Config{
+		C:           events,
+		events:      events,
+		filename:    filename,
+		watcher:     watcher,
+		prevEntries: entries,
+	}
+	go func() {
+		for {
+			select {
+			case event, ok := <-watcher.Events:
+				if !ok {
+					return
+				}
+				cfg.handleUpdate(event)
+				watcher.Add(filename)
+			case err, ok := <-watcher.Errors:
+				if !ok {
+					return
+				}
+				log.Println("Config file watch error:", err)
+			}
+		}
+	}()
+	return cfg, nil
+}
+
+func (cfg *Config) Close() error {
+	close(cfg.events)
+	return cfg.watcher.Close()
+}
+
+func (cfg *Config) handleUpdate(event fsnotify.Event) {
+	newEntries, err := ReadConfigFile(cfg.filename)
+	if err != nil {
+		log.Println("Failed to read config file:", err)
+		return
+	}
+	up, down := cfg.getConfigChange(newEntries)
+	if len(up) > 0 || len(down) > 0 {
+		log.Println("Config updated")
+	}
+	cfg.prevEntries = newEntries
+
+	go func() {
+		for _, upEntry := range up {
+			cfg.events <- ProxyEvent{
+				ProxyEntry: upEntry,
+				Up:         true,
+			}
+		}
+		for _, downEntry := range down {
+			cfg.events <- ProxyEvent{
+				ProxyEntry: downEntry,
+				Up:         false,
+			}
+		}
+	}()
+}
+
+func (cfg *Config) getConfigChange(newEntries []ProxyEntry) (up, down []ProxyEntry) {
+	for _, newEntry := range newEntries {
+		if !proxyEntryList(cfg.prevEntries).contains(newEntry) {
+			up = append(up, newEntry)
+		}
+	}
+	for _, prevEntry := range cfg.prevEntries {
+		if !proxyEntryList(newEntries).contains(prevEntry) {
+			down = append(down, prevEntry)
+		}
+	}
+	return
+}
+
+func ReadConfigFile(filename string) ([]ProxyEntry, error) {
 	file, err := os.Open(filename)
 	if err != nil {
 		return nil, err
@@ -51,9 +137,8 @@ func ReadConfigFile(filename string) (ConfigEntryList, error) {
 	return ReadConfig(file)
 }
 
-// ReadConfig ...
-func ReadConfig(config io.Reader) (ConfigEntryList, error) {
-	var entries ConfigEntryList
+func ReadConfig(config io.Reader) ([]ProxyEntry, error) {
+	var entries configEntryList
 	scanner := bufio.NewScanner(config)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -67,7 +152,7 @@ func ReadConfig(config io.Reader) (ConfigEntryList, error) {
 		}
 		hostnames := strings.Fields(items[0])
 		targets := strings.Fields(items[1])
-		entry := ConfigEntry{
+		entry := configEntry{
 			Hostnames: hostnames,
 			Targets:   make([]url.URL, 0, len(targets)),
 		}
@@ -82,28 +167,43 @@ func ReadConfig(config io.Reader) (ConfigEntryList, error) {
 		entries = append(entries, entry)
 	}
 
-	return entries, scanner.Err()
+	return entries.toProxyEntries(), scanner.Err()
 }
 
-// ToProxyEvents ...
-func (entry ConfigEntry) ToProxyEvents() []ProxyEvent {
-	proxies := make([]ProxyEvent, 0, len(entry.Hostnames)*len(entry.Targets))
+type configEntry struct {
+	Hostnames []string
+	Targets   []url.URL
+}
+
+func (entry configEntry) toProxyEntries() []ProxyEntry {
+	proxies := make([]ProxyEntry, 0, len(entry.Hostnames)*len(entry.Targets))
 	for _, hostname := range entry.Hostnames {
 		for _, target := range entry.Targets {
-			proxies = append(proxies, ProxyEvent{
+			proxies = append(proxies, ProxyEntry{
 				Hostname: hostname,
 				Target:   target,
-				Up:       true,
 			})
 		}
 	}
 	return proxies
 }
 
-// ToProxyEvents ...
-func (entries ConfigEntryList) ToProxyEvents() (proxies []ProxyEvent) {
+type configEntryList []configEntry
+
+func (entries configEntryList) toProxyEntries() (proxies []ProxyEntry) {
 	for _, entry := range entries {
-		proxies = append(proxies, entry.ToProxyEvents()...)
+		proxies = append(proxies, entry.toProxyEntries()...)
 	}
 	return
+}
+
+type proxyEntryList []ProxyEntry
+
+func (entries proxyEntryList) contains(proxy ProxyEntry) bool {
+	for _, entry := range entries {
+		if entry.Hostname == proxy.Hostname && entry.Target == proxy.Target {
+			return true
+		}
+	}
+	return false
 }

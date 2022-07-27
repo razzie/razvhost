@@ -11,6 +11,7 @@ Virtual hosting/reverse proxy with TLS termination and automatic certificate man
 * HTTPS (TLS termination)
 * HTTP2
 * Automatic certificate management (from Let's Encrypt)
+* Live config reload
 * Supports all kinds of combinations of routes and target paths
 * Load balancing
 * Watching docker containers with VIRTUAL_HOST and VIRTUAL_PORT environment variables

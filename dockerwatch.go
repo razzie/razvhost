@@ -119,9 +119,11 @@ func (d *DockerWatch) getContainerEvents(id string, start bool) ([]ProxyEvent, e
 	var events []ProxyEvent
 	for _, virtHost := range strings.Fields(virtHost) {
 		events = append(events, ProxyEvent{
-			Hostname: virtHost,
-			Target:   *targetURL,
-			Up:       start,
+			ProxyEntry: ProxyEntry{
+				Hostname: virtHost,
+				Target:   *targetURL,
+			},
+			Up: start,
 		})
 	}
 

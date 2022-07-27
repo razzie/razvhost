@@ -4,11 +4,9 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"sync"
 
@@ -16,11 +14,14 @@ import (
 	"golang.org/x/crypto/acme/autocert"
 )
 
-// ProxyEvent ...
-type ProxyEvent struct {
+type ProxyEntry struct {
 	Hostname string
 	Target   url.URL
-	Up       bool
+}
+
+type ProxyEvent struct {
+	ProxyEntry
+	Up bool
 }
 
 func (e ProxyEvent) String() string {
@@ -82,12 +83,12 @@ func (s *Server) Listen(events <-chan ProxyEvent) {
 	s.mtx.Unlock()
 
 	for e := range events {
-		s.processEvent(e)
+		s.ProcessEvent(e)
 	}
 }
 
-// Process processes a list of proxy events
-func (s *Server) Process(events []ProxyEvent) {
+// ProcessEvents processes a list of proxy events
+func (s *Server) ProcessEvents(events []ProxyEvent) {
 	s.mtx.Lock()
 	if s.proxies == nil {
 		s.proxies = make(map[string]*Mux)
@@ -95,11 +96,12 @@ func (s *Server) Process(events []ProxyEvent) {
 	s.mtx.Unlock()
 
 	for _, e := range events {
-		s.processEvent(e)
+		s.ProcessEvent(e)
 	}
 }
 
-func (s *Server) processEvent(e ProxyEvent) {
+// ProcessEvent processes a single proxy event
+func (s *Server) ProcessEvent(e ProxyEvent) {
 	log.Println("CONFIG:", e.String())
 	host, path := splitHostnameAndPath(e.Hostname)
 
@@ -226,18 +228,12 @@ func (s *Server) loadConfig() error {
 		return nil
 	}
 
-	entries, err := ReadConfigFile(s.config.ConfigFile)
+	cfg, err := NewConfig(s.config.ConfigFile)
 	if err != nil {
-		if os.IsNotExist(err) {
-			if err := ioutil.WriteFile(s.config.ConfigFile, []byte(ExampleConfig), 0777); err == nil {
-				log.Println("created demo config:", s.config.ConfigFile)
-			}
-			return nil
-		}
 		return err
 	}
+	go s.Listen(cfg.C)
 
-	s.Process(entries.ToProxyEvents())
 	return nil
 }
 
@@ -251,7 +247,7 @@ func (s *Server) watchDockerEvents() error {
 	if err != nil {
 		return err
 	}
-	s.Process(events)
+	s.ProcessEvents(events)
 
 	eventsCh, err := docker.GetProxyEvents()
 	if err != nil {
