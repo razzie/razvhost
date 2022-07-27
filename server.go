@@ -33,7 +33,6 @@ func (e ProxyEvent) String() string {
 	return str
 }
 
-// ServerConfig ...
 type ServerConfig struct {
 	ConfigFile        string
 	CertsDir          string
@@ -45,7 +44,6 @@ type ServerConfig struct {
 	PHPAddr           string
 }
 
-// Server ...
 type Server struct {
 	mtx     sync.RWMutex
 	proxies map[string]*Mux
@@ -53,7 +51,6 @@ type Server struct {
 	factory *HandlerFactory
 }
 
-// NewServer ...
 func NewServer(cfg *ServerConfig) *Server {
 	phpaddr, err := url.Parse(cfg.PHPAddr)
 	if err != nil {
@@ -161,7 +158,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "Cannot serve path: "+r.URL.Path, http.StatusForbidden)
 }
 
-// Serve ...
 func (s *Server) Serve() error {
 	certManager := &autocert.Manager{
 		Prompt:     autocert.AcceptTOS,
@@ -195,7 +191,6 @@ func (s *Server) Serve() error {
 	return <-errChan
 }
 
-// Debug ...
 func (s *Server) Debug(addr string) error {
 	log.Println("Debug interface listening on", addr)
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -267,7 +262,6 @@ func (s *Server) watchDockerEvents() error {
 	return nil
 }
 
-// LoggerMiddleware ...
 func LoggerMiddleware(handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ua := user_agent.New(r.UserAgent())

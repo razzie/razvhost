@@ -14,7 +14,6 @@ type Mux struct {
 	entryMap map[string]*muxEntry
 }
 
-// Add ...
 func (m *Mux) Add(path string, handler http.Handler, id string) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
@@ -44,7 +43,6 @@ func (m *Mux) Add(path string, handler http.Handler, id string) {
 	m.entries = append(m.entries, entry)
 }
 
-// Remove ...
 func (m *Mux) Remove(path, id string) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
@@ -55,7 +53,6 @@ func (m *Mux) Remove(path, id string) {
 	}
 }
 
-// Handler ...
 func (m *Mux) Handler(path string) http.Handler {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()

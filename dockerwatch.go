@@ -10,7 +10,6 @@ import (
 	docker "github.com/fsouza/go-dockerclient"
 )
 
-// DockerWatch ...
 type DockerWatch struct {
 	client *docker.Client
 }

@@ -14,7 +14,6 @@ import (
 	"golang.org/x/net/html/atom"
 )
 
-// HTMLStreamer ...
 type HTMLStreamer struct {
 	R           io.ReadCloser
 	ModifyToken func(*html.Token)
@@ -61,7 +60,6 @@ func (h *HTMLStreamer) Close() error {
 	return h.R.Close()
 }
 
-// NewPathPrefixHTMLStreamer ...
 func NewPathPrefixHTMLStreamer(hostname, hostPath, targetPath string, r io.ReadCloser) io.ReadCloser {
 	modifyToken := func(token *html.Token) {
 		if token.Type != html.StartTagToken && token.Type != html.SelfClosingTagToken {
@@ -80,7 +78,6 @@ func NewPathPrefixHTMLStreamer(hostname, hostPath, targetPath string, r io.ReadC
 	}
 }
 
-// NewPathPrefixHTMLResponseWriter ...
 func NewPathPrefixHTMLResponseWriter(hostname, hostPath, targetPath string, w http.ResponseWriter) ResponseWriterCloser {
 	var wg sync.WaitGroup
 	var reader io.ReadCloser

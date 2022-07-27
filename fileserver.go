@@ -48,7 +48,6 @@ func FileServer(fs http.FileSystem) http.Handler {
 // Directory implements http.FileSystem
 type Directory string
 
-// Open ...
 func (root Directory) Open(relPath string) (http.File, error) {
 	filename, err := root.resolve(relPath)
 	if err != nil {

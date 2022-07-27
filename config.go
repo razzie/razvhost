@@ -9,7 +9,6 @@ import (
 	"strings"
 )
 
-// DefaultDiscardHeaders ...
 var DefaultDiscardHeaders = []string{
 	"x-client-ip",
 	"cf-connecting-ip",

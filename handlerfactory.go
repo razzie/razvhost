@@ -24,7 +24,6 @@ import (
 //go:embed assets/*
 var assets embed.FS
 
-// HandlerFactory ...
 type HandlerFactory struct {
 	phpClientFactory gofast.ClientFactory
 }
@@ -38,7 +37,6 @@ func NewHandlerFactory(phpaddr *url.URL) *HandlerFactory {
 	return hf
 }
 
-// Handler ...
 func (hf *HandlerFactory) Handler(hostname string, target url.URL) (handler http.Handler, err error) {
 	hostname, hostPath := splitHostnameAndPath(hostname)
 	switch target.Scheme {
