@@ -24,31 +24,55 @@ type ServerConfig struct {
 }
 
 type Server struct {
-	mux     Mux
-	config  ServerConfig
-	factory *HandlerFactory
+	mux            Mux
+	config         ServerConfig
+	internalServer *http.Server
+	certManager    *autocert.Manager
+	factory        *HandlerFactory
 }
 
-func NewServer(cfg *ServerConfig) *Server {
+func NewServer(cfg ServerConfig) *Server {
+	s := &Server{
+		config: cfg,
+	}
+
+	// set up internal server
+	s.certManager = &autocert.Manager{
+		Prompt:     autocert.AcceptTOS,
+		Cache:      autocert.DirCache(s.config.CertsDir),
+		HostPolicy: s.ValidateHost,
+	}
+	s.internalServer = &http.Server{
+		Addr:    ":443",
+		Handler: LoggerMiddleware(s),
+		TLSConfig: &tls.Config{
+			GetCertificate: s.certManager.GetCertificate,
+		},
+	}
+	if !cfg.EnableHTTP2 {
+		s.internalServer.TLSNextProto = make(map[string]func(*http.Server, *tls.Conn, http.Handler))
+	}
+
+	// set up handler factory
 	phpaddr, err := url.Parse(cfg.PHPAddr)
 	if err != nil {
 		log.Println(err)
 	}
-	srv := &Server{
-		config:  *cfg,
-		factory: NewHandlerFactory(phpaddr),
-	}
+	s.factory = NewHandlerFactory(phpaddr)
+
+	// get config
 	if len(cfg.ConfigFile) > 0 {
-		if err := srv.loadConfig(); err != nil {
+		if err := s.loadConfig(); err != nil {
 			log.Println(err)
 		}
 	}
 	if cfg.WatchDockerEvents {
-		if err := srv.watchDockerEvents(); err != nil {
+		if err := s.watchDockerEvents(); err != nil {
 			log.Println(err)
 		}
 	}
-	return srv
+
+	return s
 }
 
 // Listen listens to config events
@@ -103,36 +127,24 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) Serve() error {
-	certManager := &autocert.Manager{
-		Prompt:     autocert.AcceptTOS,
-		Cache:      autocert.DirCache(s.config.CertsDir),
-		HostPolicy: s.ValidateHost,
-	}
-	server := &http.Server{
-		Addr:    ":443",
-		Handler: LoggerMiddleware(s),
-		TLSConfig: &tls.Config{
-			GetCertificate: certManager.GetCertificate,
-		},
-	}
-	if !s.config.EnableHTTP2 {
-		server.TLSNextProto = make(map[string]func(*http.Server, *tls.Conn, http.Handler))
-	}
-
 	if s.config.NoCert {
-		server.Addr = ":80"
-		return server.ListenAndServe()
+		s.internalServer.Addr = ":80"
+		return s.internalServer.ListenAndServe()
 	}
 
 	errChan := make(chan error, 1)
 	go func() {
-		acmeHandler := certManager.HTTPHandler(nil)
+		acmeHandler := s.certManager.HTTPHandler(nil)
 		errChan <- http.ListenAndServe(":80", LoggerMiddleware(acmeHandler))
 	}()
 	go func() {
-		errChan <- server.ListenAndServeTLS("", "")
+		errChan <- s.internalServer.ListenAndServeTLS("", "")
 	}()
 	return <-errChan
+}
+
+func (s *Server) Shutdown() error {
+	return s.internalServer.Shutdown(context.Background())
 }
 
 func (s *Server) Debug(addr string) error {

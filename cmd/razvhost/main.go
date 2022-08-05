@@ -4,7 +4,9 @@ import (
 	"flag"
 	"log"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"github.com/razzie/razvhost"
 )
@@ -51,6 +53,12 @@ func init() {
 	log.SetOutput(os.Stdout)
 }
 
+func waitForSignal() {
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	<-sigChan
+}
+
 func main() {
 	var serverHeader map[string]string
 	if !NoServerHeader {
@@ -62,7 +70,7 @@ func main() {
 	}
 
 	log.Println("Starting razvhost", version)
-	cfg := &razvhost.ServerConfig{
+	cfg := razvhost.ServerConfig{
 		ConfigFile:        ConfigFile,
 		CertsDir:          CertsDir,
 		NoCert:            NoCert,
@@ -74,7 +82,22 @@ func main() {
 	}
 	srv := razvhost.NewServer(cfg)
 	if len(DebugAddr) > 0 {
-		go log.Fatal(srv.Debug(DebugAddr))
+		go func() {
+			if err := srv.Debug(DebugAddr); err != nil {
+				log.Fatal(err)
+			}
+		}()
 	}
-	log.Fatal(srv.Serve())
+	go func() {
+		if err := srv.Shutdown(); err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	waitForSignal()
+
+	log.Println("Shutdown")
+	if err := srv.Shutdown(); err != nil {
+		log.Fatal(err)
+	}
 }
