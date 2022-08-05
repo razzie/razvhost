@@ -7,6 +7,9 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 
@@ -33,6 +36,8 @@ type Config struct {
 	filename    string
 	watcher     *fsnotify.Watcher
 	prevEntries []ProxyEntry
+	modCounter  uint32
+	mtx         sync.Mutex
 }
 
 func NewConfig(filename string) (*Config, error) {
@@ -68,11 +73,11 @@ func NewConfig(filename string) (*Config, error) {
 	go func() {
 		for {
 			select {
-			case event, ok := <-watcher.Events:
+			case _, ok := <-watcher.Events:
 				if !ok {
 					return
 				}
-				cfg.handleUpdate(event)
+				go cfg.handleUpdate()
 				watcher.Add(filename)
 			case err, ok := <-watcher.Errors:
 				if !ok {
@@ -90,32 +95,35 @@ func (cfg *Config) Close() error {
 	return cfg.watcher.Close()
 }
 
-func (cfg *Config) handleUpdate(event fsnotify.Event) {
+func (cfg *Config) handleUpdate() {
+	// aggregate updates and only handle the last one
+	modCount := atomic.AddUint32(&cfg.modCounter, 1)
+	<-time.After(time.Second)
+	if atomic.LoadUint32(&cfg.modCounter) != modCount {
+		return
+	}
+
 	newEntries, err := ReadConfigFile(cfg.filename)
 	if err != nil {
 		log.Println("Failed to read config file:", err)
 		return
 	}
+
+	cfg.mtx.Lock()
+	defer cfg.mtx.Unlock()
+
 	up, down := cfg.getConfigChange(newEntries)
 	if len(up) > 0 || len(down) > 0 {
 		log.Println("Config updated")
 	}
 	cfg.prevEntries = newEntries
 
-	go func() {
-		for _, upEntry := range up {
-			cfg.events <- ProxyEvent{
-				ProxyEntry: upEntry,
-				Up:         true,
-			}
-		}
-		for _, downEntry := range down {
-			cfg.events <- ProxyEvent{
-				ProxyEntry: downEntry,
-				Up:         false,
-			}
-		}
-	}()
+	for _, upEntry := range up {
+		go cfg.sendEvent(upEntry, true)
+	}
+	for _, downEntry := range down {
+		go cfg.sendEvent(downEntry, false)
+	}
 }
 
 func (cfg *Config) getConfigChange(newEntries []ProxyEntry) (up, down []ProxyEntry) {
@@ -130,6 +138,13 @@ func (cfg *Config) getConfigChange(newEntries []ProxyEntry) (up, down []ProxyEnt
 		}
 	}
 	return
+}
+
+func (cfg *Config) sendEvent(entry ProxyEntry, up bool) {
+	cfg.events <- ProxyEvent{
+		ProxyEntry: entry,
+		Up:         up,
+	}
 }
 
 func ReadConfigFile(filename string) ([]ProxyEntry, error) {
