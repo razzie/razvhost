@@ -12,26 +12,6 @@ import (
 	"golang.org/x/crypto/acme/autocert"
 )
 
-type ProxyEntry struct {
-	Hostname string
-	Target   url.URL
-}
-
-type ProxyEvent struct {
-	ProxyEntry
-	Up bool
-}
-
-func (e ProxyEvent) String() string {
-	str := e.Hostname + " -> " + e.Target.String()
-	if e.Up {
-		str += " [UP]"
-	} else {
-		str += " [DOWN]"
-	}
-	return str
-}
-
 type ServerConfig struct {
 	ConfigFile        string
 	CertsDir          string
@@ -72,9 +52,9 @@ func NewServer(cfg *ServerConfig) *Server {
 }
 
 // Listen listens to proxy events
-func (s *Server) Listen(events <-chan ProxyEvent) {
+func (s *Server) Listen(events <-chan []ProxyEvent) {
 	for e := range events {
-		s.ProcessEvent(e)
+		s.ProcessEvents(e)
 	}
 }
 

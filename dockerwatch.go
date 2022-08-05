@@ -47,19 +47,19 @@ func (d *DockerWatch) GetActiveContainers() ([]ProxyEvent, error) {
 }
 
 // GetProxyEvents returns a channel of proxy events
-func (d *DockerWatch) GetProxyEvents() (<-chan ProxyEvent, error) {
+func (d *DockerWatch) GetProxyEvents() (<-chan []ProxyEvent, error) {
 	lis := make(chan *docker.APIEvents, 1)
 	err := d.client.AddEventListener(lis)
 	if err != nil {
 		return nil, err
 	}
 
-	events := make(chan ProxyEvent, 1)
+	events := make(chan []ProxyEvent, 1)
 	go d.convertEvents(lis, events)
 	return events, nil
 }
 
-func (d *DockerWatch) convertEvents(in <-chan *docker.APIEvents, out chan<- ProxyEvent) {
+func (d *DockerWatch) convertEvents(in <-chan *docker.APIEvents, out chan<- []ProxyEvent) {
 	for e := range in {
 		if e.Type != "container" {
 			continue
@@ -76,7 +76,7 @@ func (d *DockerWatch) convertEvents(in <-chan *docker.APIEvents, out chan<- Prox
 			log.Println(err)
 		}
 		for _, event := range events {
-			out <- event
+			out <- []ProxyEvent{event}
 		}
 	}
 	close(out)

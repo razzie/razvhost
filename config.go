@@ -31,8 +31,8 @@ var DefaultDiscardHeaders = []string{
 }
 
 type Config struct {
-	C           <-chan ProxyEvent
-	events      chan ProxyEvent
+	C           <-chan []ProxyEvent
+	events      chan []ProxyEvent
 	filename    string
 	watcher     *fsnotify.Watcher
 	prevEntries []ProxyEntry
@@ -55,13 +55,8 @@ func NewConfig(filename string) (*Config, error) {
 		return nil, err
 	}
 
-	events := make(chan ProxyEvent, len(entries))
-	for _, entry := range entries {
-		events <- ProxyEvent{
-			ProxyEntry: entry,
-			Up:         true,
-		}
-	}
+	events := make(chan []ProxyEvent, 1)
+	events <- proxyEntryList(entries).toEvents(true)
 
 	cfg := &Config{
 		C:           events,
@@ -118,12 +113,9 @@ func (cfg *Config) handleUpdate() {
 	}
 	cfg.prevEntries = newEntries
 
-	for _, upEntry := range up {
-		go cfg.sendEvent(upEntry, true)
-	}
-	for _, downEntry := range down {
-		go cfg.sendEvent(downEntry, false)
-	}
+	go func() {
+		cfg.events <- append(proxyEntryList(up).toEvents(true), proxyEntryList(down).toEvents(false)...)
+	}()
 }
 
 func (cfg *Config) getConfigChange(newEntries []ProxyEntry) (up, down []ProxyEntry) {
@@ -138,13 +130,6 @@ func (cfg *Config) getConfigChange(newEntries []ProxyEntry) (up, down []ProxyEnt
 		}
 	}
 	return
-}
-
-func (cfg *Config) sendEvent(entry ProxyEntry, up bool) {
-	cfg.events <- ProxyEvent{
-		ProxyEntry: entry,
-		Up:         up,
-	}
 }
 
 func ReadConfigFile(filename string) ([]ProxyEntry, error) {
@@ -250,4 +235,35 @@ func (entries proxyEntryList) contains(proxy ProxyEntry) bool {
 		}
 	}
 	return false
+}
+
+func (entries proxyEntryList) toEvents(up bool) []ProxyEvent {
+	events := make([]ProxyEvent, len(entries))
+	for _, entry := range entries {
+		events = append(events, ProxyEvent{
+			ProxyEntry: entry,
+			Up:         up,
+		})
+	}
+	return events
+}
+
+type ProxyEntry struct {
+	Hostname string
+	Target   url.URL
+}
+
+type ProxyEvent struct {
+	ProxyEntry
+	Up bool
+}
+
+func (e ProxyEvent) String() string {
+	str := e.Hostname + " -> " + e.Target.String()
+	if e.Up {
+		str += " [UP]"
+	} else {
+		str += " [DOWN]"
+	}
+	return str
 }
