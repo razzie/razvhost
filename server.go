@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/mssola/user_agent"
 	"golang.org/x/crypto/acme/autocert"
 )
 
@@ -219,15 +218,4 @@ func (s *Server) watchDockerEvents() error {
 	go s.Listen(eventsCh)
 
 	return nil
-}
-
-func LoggerMiddleware(handler http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ua := user_agent.New(r.UserAgent())
-		browser, ver := ua.Browser()
-		log.Printf("%s %s%s - %s (%s %s %s)",
-			r.Method, r.Host, r.URL.RequestURI(),
-			r.RemoteAddr, ua.OS(), browser, ver)
-		handler.ServeHTTP(w, r)
-	})
 }
