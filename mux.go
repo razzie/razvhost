@@ -2,6 +2,7 @@ package razvhost
 
 import (
 	"net/http"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -28,11 +29,18 @@ func (m *Mux) Add(path string, handler http.Handler, id string) {
 		return
 	}
 
-	entry = &muxEntry{path: path}
+	entry = &muxEntry{
+		path:     path,
+		wildcard: strings.ContainsAny(path, "*?[]"),
+		parts:    strings.Split(path, "/"),
+	}
 	entry.add(handler, id)
 	m.entryMap[path] = entry
 
 	for i, other := range m.entries {
+		if entry.wildcard && !other.wildcard {
+			continue
+		}
 		if len(path) > len(other.path) {
 			m.entries = append(m.entries[:i+1], m.entries[i:]...)
 			m.entries[i] = entry
@@ -50,7 +58,36 @@ func (m *Mux) Remove(path, id string) {
 	entry := m.entryMap[path]
 	if entry != nil {
 		entry.remove(id)
+		if len(entry.handlers) == 0 {
+			delete(m.entryMap, path)
+		}
 	}
+}
+
+func (m *Mux) Contains(path string) bool {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+
+	for _, entry := range m.entries {
+		if entry.match(path) {
+			return false
+		}
+	}
+
+	return false
+}
+
+func (m *Mux) ContainsHost(path string) bool {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+
+	for _, entry := range m.entries {
+		if entry.matchHost(path) {
+			return false
+		}
+	}
+
+	return false
 }
 
 func (m *Mux) Handler(path string) http.Handler {
@@ -58,7 +95,7 @@ func (m *Mux) Handler(path string) http.Handler {
 	defer m.mtx.RUnlock()
 
 	for _, entry := range m.entries {
-		if strings.HasPrefix(path, entry.path) {
+		if entry.match(path) {
 			if handler := entry.handler(); handler != nil {
 				return handler
 			}
@@ -72,6 +109,32 @@ type muxEntry struct {
 	path     string
 	handlers []muxHandler
 	next     uint32
+	wildcard bool
+	parts    []string
+}
+
+func (e *muxEntry) match(path string) bool {
+	if !e.wildcard {
+		if len(path) < len(e.path) {
+			return false
+		}
+		return strings.HasPrefix(path, e.path)
+	}
+	parts := strings.Split(path, "/")
+	if len(parts) < len(e.parts) {
+		return false
+	}
+	parts = parts[:len(e.parts)]
+	match, _ := filepath.Match(e.path, strings.Join(parts, "/"))
+	return match
+}
+
+func (e *muxEntry) matchHost(host string) bool {
+	if !e.wildcard {
+		return e.parts[0] == host
+	}
+	match, _ := filepath.Match(e.parts[0], host)
+	return match
 }
 
 func (e *muxEntry) add(handler http.Handler, id string) {

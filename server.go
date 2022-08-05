@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"sync"
 
 	"github.com/mssola/user_agent"
 	"golang.org/x/crypto/acme/autocert"
@@ -46,8 +45,7 @@ type ServerConfig struct {
 }
 
 type Server struct {
-	mtx     sync.RWMutex
-	proxies map[string]*Mux
+	mux     Mux
 	config  ServerConfig
 	factory *HandlerFactory
 }
@@ -76,12 +74,6 @@ func NewServer(cfg *ServerConfig) *Server {
 
 // Listen listens to proxy events
 func (s *Server) Listen(events <-chan ProxyEvent) {
-	s.mtx.Lock()
-	if s.proxies == nil {
-		s.proxies = make(map[string]*Mux)
-	}
-	s.mtx.Unlock()
-
 	for e := range events {
 		s.ProcessEvent(e)
 	}
@@ -89,12 +81,6 @@ func (s *Server) Listen(events <-chan ProxyEvent) {
 
 // ProcessEvents processes a list of proxy events
 func (s *Server) ProcessEvents(events []ProxyEvent) {
-	s.mtx.Lock()
-	if s.proxies == nil {
-		s.proxies = make(map[string]*Mux)
-	}
-	s.mtx.Unlock()
-
 	for _, e := range events {
 		s.ProcessEvent(e)
 	}
@@ -103,15 +89,9 @@ func (s *Server) ProcessEvents(events []ProxyEvent) {
 // ProcessEvent processes a single proxy event
 func (s *Server) ProcessEvent(e ProxyEvent) {
 	log.Println("CONFIG:", e.String())
-	host, path := splitHostnameAndPath(e.Hostname)
 
 	if !e.Up {
-		s.mtx.RLock()
-		m := s.proxies[host]
-		s.mtx.RUnlock()
-		if m != nil {
-			m.Remove(path, e.Target.String())
-		}
+		s.mux.Remove(e.Hostname, e.Target.String())
 		return
 	}
 
@@ -123,41 +103,24 @@ func (s *Server) ProcessEvent(e ProxyEvent) {
 		return
 	}
 
-	s.mtx.Lock()
-	m := s.proxies[host]
-	if m == nil {
-		m = new(Mux)
-		s.proxies[host] = m
-	}
-	s.mtx.Unlock()
-
-	m.Add(path, handler, e.Target.String())
+	s.mux.Add(e.Hostname, handler, e.Target.String())
 }
 
 // ValidateHost implements autocert.HostPolicy
 func (s *Server) ValidateHost(ctx context.Context, host string) error {
-	s.mtx.RLock()
-	defer s.mtx.RUnlock()
-	if _, ok := s.proxies[host]; !ok {
+	if !s.mux.ContainsHost(host) {
 		return fmt.Errorf("unknown hostname: %s", host)
 	}
 	return nil
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	s.mtx.RLock()
-	m, ok := s.proxies[r.Host]
-	s.mtx.RUnlock()
-	if !ok {
-		http.Error(w, "Unknown hostname in request: "+r.Host, http.StatusForbidden)
-		return
-	}
-	if handler := m.Handler(r.URL.Path); handler != nil {
+	if handler := s.mux.Handler(r.Host + r.URL.Path); handler != nil {
 		s.updateHeaders(w, r)
 		handler.ServeHTTP(w, r)
 		return
 	}
-	http.Error(w, "Cannot serve path: "+r.URL.Path, http.StatusForbidden)
+	http.Error(w, "Cannot serve path: "+r.Host+r.URL.Path, http.StatusForbidden)
 }
 
 func (s *Server) Serve() error {
