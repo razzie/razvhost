@@ -51,22 +51,22 @@ func NewServer(cfg *ServerConfig) *Server {
 	return srv
 }
 
-// Listen listens to proxy events
-func (s *Server) Listen(events <-chan []ProxyEvent) {
+// Listen listens to config events
+func (s *Server) Listen(events <-chan []ConfigEvent) {
 	for e := range events {
 		s.ProcessEvents(e)
 	}
 }
 
-// ProcessEvents processes a list of proxy events
-func (s *Server) ProcessEvents(events []ProxyEvent) {
+// ProcessEvents processes a list of config events
+func (s *Server) ProcessEvents(events []ConfigEvent) {
 	for _, e := range events {
 		s.ProcessEvent(e)
 	}
 }
 
-// ProcessEvent processes a single proxy event
-func (s *Server) ProcessEvent(e ProxyEvent) {
+// ProcessEvent processes a single config event
+func (s *Server) ProcessEvent(e ConfigEvent) {
 	log.Println("CONFIG:", e.String())
 
 	if !e.Up {
@@ -191,7 +191,7 @@ func (s *Server) watchDockerEvents() error {
 	}
 	s.ProcessEvents(events)
 
-	eventsCh, err := docker.GetProxyEvents()
+	eventsCh, err := docker.GetConfigEvents()
 	if err != nil {
 		return err
 	}

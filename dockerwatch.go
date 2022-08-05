@@ -27,14 +27,14 @@ func NewDockerWatch() (*DockerWatch, error) {
 	return d, nil
 }
 
-// GetActiveContainers returns up proxy events for active containers
-func (d *DockerWatch) GetActiveContainers() ([]ProxyEvent, error) {
+// GetActiveContainers returns up config events for active containers
+func (d *DockerWatch) GetActiveContainers() ([]ConfigEvent, error) {
 	containers, err := d.client.ListContainers(docker.ListContainersOptions{})
 	if err != nil {
 		return nil, err
 	}
 
-	var results []ProxyEvent
+	var results []ConfigEvent
 	for _, container := range containers {
 		events, err := d.getContainerEvents(container.ID, true)
 		if err != nil {
@@ -46,25 +46,25 @@ func (d *DockerWatch) GetActiveContainers() ([]ProxyEvent, error) {
 	return results, nil
 }
 
-// GetProxyEvents returns a channel of proxy events
-func (d *DockerWatch) GetProxyEvents() (<-chan []ProxyEvent, error) {
+// GetConfigEvents returns a channel of config events
+func (d *DockerWatch) GetConfigEvents() (<-chan []ConfigEvent, error) {
 	lis := make(chan *docker.APIEvents, 1)
 	err := d.client.AddEventListener(lis)
 	if err != nil {
 		return nil, err
 	}
 
-	events := make(chan []ProxyEvent, 1)
+	events := make(chan []ConfigEvent, 1)
 	go d.convertEvents(lis, events)
 	return events, nil
 }
 
-func (d *DockerWatch) convertEvents(in <-chan *docker.APIEvents, out chan<- []ProxyEvent) {
+func (d *DockerWatch) convertEvents(in <-chan *docker.APIEvents, out chan<- []ConfigEvent) {
 	for e := range in {
 		if e.Type != "container" {
 			continue
 		}
-		var events []ProxyEvent
+		var events []ConfigEvent
 		var err error
 		switch e.Action {
 		case "start":
@@ -76,13 +76,13 @@ func (d *DockerWatch) convertEvents(in <-chan *docker.APIEvents, out chan<- []Pr
 			log.Println(err)
 		}
 		for _, event := range events {
-			out <- []ProxyEvent{event}
+			out <- []ConfigEvent{event}
 		}
 	}
 	close(out)
 }
 
-func (d *DockerWatch) getContainerEvents(id string, start bool) ([]ProxyEvent, error) {
+func (d *DockerWatch) getContainerEvents(id string, start bool) ([]ConfigEvent, error) {
 	cont, err := d.client.InspectContainerWithOptions(docker.InspectContainerOptions{
 		Context: context.Background(),
 		ID:      id,
@@ -116,10 +116,10 @@ func (d *DockerWatch) getContainerEvents(id string, start bool) ([]ProxyEvent, e
 		return nil, err
 	}
 
-	var events []ProxyEvent
+	var events []ConfigEvent
 	for _, virtHost := range strings.Fields(virtHost) {
-		events = append(events, ProxyEvent{
-			ProxyEntry: ProxyEntry{
+		events = append(events, ConfigEvent{
+			ConfigEntry: ConfigEntry{
 				Hostname: virtHost,
 				Target:   *targetURL,
 			},

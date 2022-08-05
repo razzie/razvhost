@@ -24,6 +24,18 @@ var (
 
 var version string
 
+var defaultDiscardHeaders = []string{
+	"x-client-ip",
+	"cf-connecting-ip",
+	"fastly-client-ip",
+	"true-client-ip",
+	"x-real-ip",
+	"x-cluster-client-ip",
+	"x-forwarded",
+	"forwarded-for",
+	"forwarded",
+}
+
 func init() {
 	flag.StringVar(&ConfigFile, "cfg", "config", "Config file")
 	flag.StringVar(&CertsDir, "certs", "certs", "Directory to store certificates in")
@@ -56,7 +68,7 @@ func main() {
 		NoCert:            NoCert,
 		WatchDockerEvents: WatchDockerEvents,
 		EnableHTTP2:       EnableHTTP2,
-		DiscardHeaders:    append(strings.Split(DiscardHeaders, ","), razvhost.DefaultDiscardHeaders...),
+		DiscardHeaders:    append(strings.Split(DiscardHeaders, ","), defaultDiscardHeaders...),
 		ExtraHeaders:      serverHeader,
 		PHPAddr:           PHPAddr,
 	}

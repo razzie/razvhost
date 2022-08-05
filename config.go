@@ -2,6 +2,7 @@ package razvhost
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 	"log"
 	"net/url"
@@ -9,33 +10,39 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"text/template"
 	"time"
 
-	"github.com/fsnotify/fsnotify"
-
-	"text/template"
-
 	"github.com/Masterminds/sprig/v3"
+	"github.com/fsnotify/fsnotify"
 )
 
-var DefaultDiscardHeaders = []string{
-	"x-client-ip",
-	"cf-connecting-ip",
-	"fastly-client-ip",
-	"true-client-ip",
-	"x-real-ip",
-	"x-cluster-client-ip",
-	"x-forwarded",
-	"forwarded-for",
-	"forwarded",
+type ConfigEntry struct {
+	Hostname string
+	Target   url.URL
+}
+
+type ConfigEvent struct {
+	ConfigEntry
+	Up bool
+}
+
+func (e ConfigEvent) String() string {
+	str := e.Hostname + " -> " + e.Target.String()
+	if e.Up {
+		str += " [UP]"
+	} else {
+		str += " [DOWN]"
+	}
+	return str
 }
 
 type Config struct {
-	C           <-chan []ProxyEvent
-	events      chan []ProxyEvent
+	C           <-chan []ConfigEvent
+	events      chan []ConfigEvent
 	filename    string
 	watcher     *fsnotify.Watcher
-	prevEntries []ProxyEntry
+	prevEntries []ConfigEntry
 	modCounter  uint32
 	mtx         sync.Mutex
 }
@@ -55,8 +62,8 @@ func NewConfig(filename string) (*Config, error) {
 		return nil, err
 	}
 
-	events := make(chan []ProxyEvent, 1)
-	events <- proxyEntryList(entries).toEvents(true)
+	events := make(chan []ConfigEvent, 1)
+	events <- configEntries(entries).toEvents(true)
 
 	cfg := &Config{
 		C:           events,
@@ -114,25 +121,25 @@ func (cfg *Config) handleUpdate() {
 	cfg.prevEntries = newEntries
 
 	go func() {
-		cfg.events <- append(proxyEntryList(up).toEvents(true), proxyEntryList(down).toEvents(false)...)
+		cfg.events <- append(up.toEvents(true), down.toEvents(false)...)
 	}()
 }
 
-func (cfg *Config) getConfigChange(newEntries []ProxyEntry) (up, down []ProxyEntry) {
+func (cfg *Config) getConfigChange(newEntries []ConfigEntry) (up, down configEntries) {
 	for _, newEntry := range newEntries {
-		if !proxyEntryList(cfg.prevEntries).contains(newEntry) {
+		if !configEntries(cfg.prevEntries).contains(newEntry) {
 			up = append(up, newEntry)
 		}
 	}
 	for _, prevEntry := range cfg.prevEntries {
-		if !proxyEntryList(newEntries).contains(prevEntry) {
+		if !configEntries(newEntries).contains(prevEntry) {
 			down = append(down, prevEntry)
 		}
 	}
 	return
 }
 
-func ReadConfigFile(filename string) ([]ProxyEntry, error) {
+func ReadConfigFile(filename string) ([]ConfigEntry, error) {
 	file, err := os.Open(filename)
 	if err != nil {
 		return nil, err
@@ -141,42 +148,24 @@ func ReadConfigFile(filename string) ([]ProxyEntry, error) {
 	return ReadConfig(file)
 }
 
-func ReadConfig(reader io.Reader) ([]ProxyEntry, error) {
+func ReadConfig(reader io.Reader) ([]ConfigEntry, error) {
 	r, err := executeTemplates(reader)
 	if err != nil {
 		return nil, err
 	}
 
-	var entries configEntryList
+	var config configLines
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if len(line) == 0 || strings.HasPrefix(line, "#") {
+		line, err := readConfigLine(scanner.Text())
+		if err != nil {
+			log.Println(err)
 			continue
 		}
-		items := strings.SplitN(line, "->", 2)
-		if len(items) < 2 {
-			log.Println("bad config line:", line)
-			continue
-		}
-		hostnames := strings.Fields(items[0])
-		targets := strings.Fields(items[1])
-		entry := configEntry{
-			Hostnames: hostnames,
-			Targets:   make([]url.URL, 0, len(targets)),
-		}
-		for _, target := range targets {
-			targetURL, err := url.Parse(target)
-			if err != nil {
-				log.Println("bad target:", err)
-				continue
-			}
-			entry.Targets = append(entry.Targets, *targetURL)
-		}
-		entries = append(entries, entry)
+		config = append(config, line)
 	}
 
-	return entries.toProxyEntries(), scanner.Err()
+	return config.toConfigEntries(), scanner.Err()
 }
 
 func executeTemplates(reader io.Reader) (io.Reader, error) {
@@ -199,71 +188,73 @@ func executeTemplates(reader io.Reader) (io.Reader, error) {
 	return strings.NewReader(config.String()), nil
 }
 
-type configEntry struct {
+type configLine struct {
 	Hostnames []string
 	Targets   []url.URL
 }
 
-func (entry configEntry) toProxyEntries() []ProxyEntry {
-	proxies := make([]ProxyEntry, 0, len(entry.Hostnames)*len(entry.Targets))
-	for _, hostname := range entry.Hostnames {
-		for _, target := range entry.Targets {
-			proxies = append(proxies, ProxyEntry{
+func readConfigLine(text string) (line configLine, err error) {
+	text = strings.TrimSpace(text)
+	if len(text) == 0 || strings.HasPrefix(text, "#") {
+		return
+	}
+	items := strings.SplitN(text, "->", 2)
+	if len(items) < 2 {
+		err = fmt.Errorf("bad config line: %s", text)
+		return
+	}
+	line.Hostnames = strings.Fields(items[0])
+	for _, target := range strings.Fields(items[1]) {
+		targetURL, urlErr := url.Parse(target)
+		if urlErr != nil {
+			err = fmt.Errorf("cannot parse target url: %v", urlErr)
+			return
+		}
+		line.Targets = append(line.Targets, *targetURL)
+	}
+	return
+}
+
+func (line configLine) toConfigEntries() []ConfigEntry {
+	entries := make([]ConfigEntry, 0, len(line.Hostnames)*len(line.Targets))
+	for _, hostname := range line.Hostnames {
+		for _, target := range line.Targets {
+			entries = append(entries, ConfigEntry{
 				Hostname: hostname,
 				Target:   target,
 			})
 		}
 	}
-	return proxies
+	return entries
 }
 
-type configEntryList []configEntry
+type configLines []configLine
 
-func (entries configEntryList) toProxyEntries() (proxies []ProxyEntry) {
-	for _, entry := range entries {
-		proxies = append(proxies, entry.toProxyEntries()...)
+func (lines configLines) toConfigEntries() (entries []ConfigEntry) {
+	for _, entry := range lines {
+		entries = append(entries, entry.toConfigEntries()...)
 	}
 	return
 }
 
-type proxyEntryList []ProxyEntry
+type configEntries []ConfigEntry
 
-func (entries proxyEntryList) contains(proxy ProxyEntry) bool {
+func (entries configEntries) contains(other ConfigEntry) bool {
 	for _, entry := range entries {
-		if entry.Hostname == proxy.Hostname && entry.Target == proxy.Target {
+		if entry.Hostname == other.Hostname && entry.Target == other.Target {
 			return true
 		}
 	}
 	return false
 }
 
-func (entries proxyEntryList) toEvents(up bool) []ProxyEvent {
-	events := make([]ProxyEvent, len(entries))
+func (entries configEntries) toEvents(up bool) []ConfigEvent {
+	events := make([]ConfigEvent, 0, len(entries))
 	for _, entry := range entries {
-		events = append(events, ProxyEvent{
-			ProxyEntry: entry,
-			Up:         up,
+		events = append(events, ConfigEvent{
+			ConfigEntry: entry,
+			Up:          up,
 		})
 	}
 	return events
-}
-
-type ProxyEntry struct {
-	Hostname string
-	Target   url.URL
-}
-
-type ProxyEvent struct {
-	ProxyEntry
-	Up bool
-}
-
-func (e ProxyEvent) String() string {
-	str := e.Hostname + " -> " + e.Target.String()
-	if e.Up {
-		str += " [UP]"
-	} else {
-		str += " [DOWN]"
-	}
-	return str
 }
