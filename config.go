@@ -9,6 +9,10 @@ import (
 	"strings"
 
 	"github.com/fsnotify/fsnotify"
+
+	"text/template"
+
+	"github.com/Masterminds/sprig/v3"
 )
 
 var DefaultDiscardHeaders = []string{
@@ -137,9 +141,14 @@ func ReadConfigFile(filename string) ([]ProxyEntry, error) {
 	return ReadConfig(file)
 }
 
-func ReadConfig(config io.Reader) ([]ProxyEntry, error) {
+func ReadConfig(reader io.Reader) ([]ProxyEntry, error) {
+	r, err := executeTemplates(reader)
+	if err != nil {
+		return nil, err
+	}
+
 	var entries configEntryList
-	scanner := bufio.NewScanner(config)
+	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if len(line) == 0 || strings.HasPrefix(line, "#") {
@@ -168,6 +177,26 @@ func ReadConfig(config io.Reader) ([]ProxyEntry, error) {
 	}
 
 	return entries.toProxyEntries(), scanner.Err()
+}
+
+func executeTemplates(reader io.Reader) (io.Reader, error) {
+	config := new(strings.Builder)
+	_, err := io.Copy(config, reader)
+	if err != nil {
+		return nil, err
+	}
+
+	tpl, err := template.New("").Funcs(sprig.TxtFuncMap()).Parse(config.String())
+	if err != nil {
+		return nil, err
+	}
+
+	config.Reset()
+	if err := tpl.Execute(config, nil); err != nil {
+		return nil, err
+	}
+
+	return strings.NewReader(config.String()), nil
 }
 
 type configEntry struct {

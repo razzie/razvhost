@@ -14,6 +14,7 @@ Virtual hosting/reverse proxy with TLS termination and automatic certificate man
 * Automatic certificate management (from Let's Encrypt)
 * Live config reload
 * Supports all kinds of combinations of routes and target paths
+* Supports [sprig](https://masterminds.github.io/sprig/) templates
 * Load balancing
 * Watching docker containers with VIRTUAL_HOST and VIRTUAL_PORT environment variables
 * Configurable header discarding
@@ -26,7 +27,7 @@ Alternatively you can specify the config file location with `-cfg <config file>`
 An example configuration:
 ```
 # comment
-example.com alias.com -> http://localhost:8080
+example.com alias.com {{env "ALIAS"}} -> http://localhost:8080
 example.com/*/files -> file:///var/www/public/
 loadbalance.com -> http://localhost:8081 http://localhost:8082
 *.redirect.com -> redirect://github.com/razzie/razvhost
