@@ -4,11 +4,12 @@ Virtual hosting/reverse proxy with TLS termination and automatic certificate man
 ## Features
 * Operation modes:
   * Reverse proxy
+  * Redirect
   * File and directory hosting
   * Reading public S3 buckets
   * PHP hosting (requires php-fpm)
   * Go WebAssembly hosting
-  * Redirect
+  * Tailing log files
 * HTTPS (TLS termination)
 * HTTP2
 * Automatic certificate management (from Let's Encrypt)
@@ -35,6 +36,8 @@ mybucket.com -> s3://mybucket/prefix?region=eu-central-1
 phpexample.com -> php:///var/www/index.php
 phpexample2.com -> php:///var/www/mysite/
 golang-project.com -> go-wasm:///path/to/build.wasm
+kernel-logs-new.net -> tail-new:///var/log/kern.log
+kernel-logs-all.net -> tail:///var/log/kern.log
 ```
 
 ## Build

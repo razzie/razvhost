@@ -7,6 +7,7 @@ require (
 	github.com/aws/aws-sdk-go v1.44.63
 	github.com/fsnotify/fsnotify v1.5.4
 	github.com/fsouza/go-dockerclient v1.8.1
+	github.com/hpcloud/tail v1.0.0
 	github.com/jszwec/s3fs v0.3.2
 	github.com/mssola/user_agent v0.5.3
 	github.com/yookoala/gofast v0.6.0
@@ -49,4 +50,6 @@ require (
 	golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f // indirect
 	golang.org/x/text v0.3.7 // indirect
 	golang.org/x/tools v0.1.11 // indirect
+	gopkg.in/fsnotify.v1 v1.4.7 // indirect
+	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 )

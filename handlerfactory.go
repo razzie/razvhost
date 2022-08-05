@@ -19,6 +19,8 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/jszwec/s3fs"
 	"github.com/yookoala/gofast"
+
+	"github.com/hpcloud/tail"
 )
 
 //go:embed assets/*
@@ -52,6 +54,10 @@ func (hf *HandlerFactory) Handler(hostname string, target url.URL) (handler http
 		handler, err = hf.newPHPHandler(hostname, hostPath, target.Host+target.Path)
 	case "go-wasm":
 		handler = hf.newGoWasmHandler(hostname, hostPath, target.Host+target.Path)
+	case "tail":
+		handler = hf.newTailHandler(hostname, hostPath, target.Host+target.Path, io.SeekStart)
+	case "tail-new":
+		handler = hf.newTailHandler(hostname, hostPath, target.Host+target.Path, io.SeekEnd)
 	default:
 		err = fmt.Errorf("unknown target URL scheme: %s", target.Scheme)
 	}
@@ -178,6 +184,41 @@ func (hf *HandlerFactory) newGoWasmHandler(hostname, hostPath, wasmFile string) 
 			http.ServeFile(w, r, wasmFile)
 		default:
 			http.Error(w, "Not found", http.StatusNotFound)
+		}
+	})
+}
+
+func (hf *HandlerFactory) newTailHandler(hostname, hostPath, tailFile string, whence int) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cfg := tail.Config{
+			Follow:   true,
+			Logger:   tail.DiscardingLogger,
+			Location: &tail.SeekInfo{Offset: 0, Whence: whence},
+		}
+		t, err := tail.TailFile(tailFile, cfg)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		w.Header().Add("content-type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		f, _ := w.(http.Flusher)
+		for {
+			select {
+			case <-r.Context().Done():
+				return
+			case line, ok := <-t.Lines:
+				if !ok {
+					return
+				}
+				io.WriteString(w, line.Text+"\n")
+				if line.Err != nil {
+					io.WriteString(w, line.Err.Error())
+					return
+				}
+				if f != nil {
+					f.Flush()
+				}
+			}
 		}
 	})
 }

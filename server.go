@@ -225,7 +225,7 @@ func LoggerMiddleware(handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ua := user_agent.New(r.UserAgent())
 		browser, ver := ua.Browser()
-		defer log.Printf("%s %s%s - %s (%s %s %s)",
+		log.Printf("%s %s%s - %s (%s %s %s)",
 			r.Method, r.Host, r.URL.RequestURI(),
 			r.RemoteAddr, ua.OS(), browser, ver)
 		handler.ServeHTTP(w, r)
