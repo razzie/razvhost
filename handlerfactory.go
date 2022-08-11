@@ -98,7 +98,13 @@ func (hf *HandlerFactory) newRedirectHandler(hostname, hostPath string, target u
 }
 
 func (hf *HandlerFactory) newS3Handler(hostname, hostPath string, target url.URL) (http.Handler, error) {
-	conf := aws.NewConfig().WithCredentials(credentials.AnonymousCredentials)
+	conf := aws.NewConfig()
+	if secret, hasSecret := target.User.Password(); hasSecret {
+		id := target.User.Username()
+		conf = conf.WithCredentials(credentials.NewStaticCredentials(id, secret, ""))
+	} else {
+		conf = conf.WithCredentials(credentials.AnonymousCredentials)
+	}
 	bucket := ""
 	if strings.Contains(target.Host, ".") {
 		bucketAndEndpoint := strings.SplitN(target.Host, ".", 2)
