@@ -28,7 +28,7 @@ type ConfigEvent struct {
 }
 
 func (e ConfigEvent) String() string {
-	str := e.Hostname + " -> " + e.Target.String()
+	str := e.Hostname + " -> " + e.Target.Redacted()
 	if e.Up {
 		str += " [UP]"
 	} else {
