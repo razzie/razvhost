@@ -1,4 +1,4 @@
-package razvhost
+package server
 
 import (
 	"context"
@@ -9,6 +9,11 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/razzie/razvhost/pkg/config"
+	"github.com/razzie/razvhost/pkg/handler"
+	"github.com/razzie/razvhost/pkg/logger"
+	"github.com/razzie/razvhost/pkg/mux"
+	"github.com/razzie/razvhost/pkg/stream"
 	"golang.org/x/crypto/acme/autocert"
 )
 
@@ -24,11 +29,11 @@ type ServerConfig struct {
 }
 
 type Server struct {
-	mux            Mux
+	mux            mux.Mux
 	config         ServerConfig
 	internalServer *http.Server
 	certManager    *autocert.Manager
-	factory        *HandlerFactory
+	factory        *handler.HandlerFactory
 }
 
 func NewServer(cfg ServerConfig) *Server {
@@ -44,7 +49,7 @@ func NewServer(cfg ServerConfig) *Server {
 	}
 	s.internalServer = &http.Server{
 		Addr:    ":443",
-		Handler: LoggerMiddleware(s),
+		Handler: logger.LoggerMiddleware(s),
 		TLSConfig: &tls.Config{
 			GetCertificate: s.certManager.GetCertificate,
 		},
@@ -58,7 +63,7 @@ func NewServer(cfg ServerConfig) *Server {
 	if err != nil {
 		log.Println(err)
 	}
-	s.factory = NewHandlerFactory(phpaddr)
+	s.factory = handler.NewHandlerFactory(phpaddr)
 
 	// get config
 	if len(cfg.ConfigFile) > 0 {
@@ -76,21 +81,21 @@ func NewServer(cfg ServerConfig) *Server {
 }
 
 // Listen listens to config events
-func (s *Server) Listen(events <-chan []ConfigEvent) {
+func (s *Server) Listen(events <-chan []config.ConfigEvent) {
 	for e := range events {
 		s.ProcessEvents(e)
 	}
 }
 
 // ProcessEvents processes a list of config events
-func (s *Server) ProcessEvents(events []ConfigEvent) {
+func (s *Server) ProcessEvents(events []config.ConfigEvent) {
 	for _, e := range events {
 		s.ProcessEvent(e)
 	}
 }
 
 // ProcessEvent processes a single config event
-func (s *Server) ProcessEvent(e ConfigEvent) {
+func (s *Server) ProcessEvent(e config.ConfigEvent) {
 	log.Println("CONFIG:", e.String())
 
 	if !e.Up {
@@ -135,7 +140,7 @@ func (s *Server) Serve() error {
 	errChan := make(chan error, 1)
 	go func() {
 		acmeHandler := s.certManager.HTTPHandler(nil)
-		errChan <- http.ListenAndServe(":80", LoggerMiddleware(acmeHandler))
+		errChan <- http.ListenAndServe(":80", logger.LoggerMiddleware(acmeHandler))
 	}()
 	go func() {
 		errChan <- s.internalServer.ListenAndServeTLS("", "")
@@ -158,11 +163,11 @@ func (s *Server) Debug(addr string) error {
 		r.Host = uri[1]
 		r.URL.Path = strings.TrimPrefix(r.URL.Path, "/"+r.Host)
 		r.URL.RawPath = strings.TrimPrefix(r.URL.RawPath, "/"+r.Host)
-		ww := NewPathPrefixHTMLResponseWriter(r.URL.Host, "/"+r.Host, "", w)
+		ww := stream.NewPathPrefixHTMLResponseWriter(r.URL.Host, "/"+r.Host, "", w)
 		defer ww.Close()
 		s.ServeHTTP(ww, r)
 	})
-	return http.ListenAndServe(addr, LoggerMiddleware(handler))
+	return http.ListenAndServe(addr, logger.LoggerMiddleware(handler))
 }
 
 func (s *Server) updateHeaders(w http.ResponseWriter, r *http.Request) {
@@ -182,7 +187,7 @@ func (s *Server) loadConfig() error {
 		return nil
 	}
 
-	cfg, err := NewConfig(s.config.ConfigFile)
+	cfg, err := config.NewConfig(s.config.ConfigFile)
 	if err != nil {
 		return err
 	}
@@ -192,7 +197,7 @@ func (s *Server) loadConfig() error {
 }
 
 func (s *Server) watchDockerEvents() error {
-	docker, err := NewDockerWatch()
+	docker, err := config.NewDockerWatch()
 	if err != nil {
 		return err
 	}

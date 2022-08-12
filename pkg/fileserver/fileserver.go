@@ -1,4 +1,4 @@
-package razvhost
+package fileserver
 
 import (
 	"fmt"
@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/razzie/razvhost/pkg/util"
 )
 
 // errors
@@ -114,7 +116,7 @@ func newFsEntry(fi os.FileInfo, prefix string) fsEntry {
 		Icon:     "&#128196;",
 		Name:     fi.Name(),
 		FullName: path.Join(prefix, fi.Name()),
-		Size:     byteCountIEC(fi.Size()),
+		Size:     util.ByteCountIEC(fi.Size()),
 		Modified: fi.ModTime().Format("Mon, 02 Jan 2006 15:04:05 MST"),
 		Created:  getCreationTime(fi).Format("Mon, 02 Jan 2006 15:04:05 MST"),
 	}
@@ -148,20 +150,6 @@ func handleDir(w http.ResponseWriter, dir http.File, uri string) {
 		entries = append(entries, newFsEntry(fi, uri))
 	}
 	fsTemplate.Execute(w, entries)
-}
-
-func byteCountIEC(b int64) string {
-	const unit = 1024
-	if b < unit {
-		return fmt.Sprintf("%d B", b)
-	}
-	div, exp := int64(unit), 0
-	for n := b / unit; n >= unit; n /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%.1f %ciB",
-		float64(b)/float64(div), "KMGTPE"[exp])
 }
 
 var fsTemplate = template.Must(template.New("FileServer").Parse(`

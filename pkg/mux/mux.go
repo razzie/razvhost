@@ -1,4 +1,4 @@
-package razvhost
+package mux
 
 import (
 	"net/http"

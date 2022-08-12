@@ -1,4 +1,4 @@
-package razvhost
+package fileserver
 
 import (
 	"os"

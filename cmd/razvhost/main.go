@@ -8,7 +8,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/razzie/razvhost"
+	"github.com/razzie/razvhost/pkg/server"
 )
 
 // command line args
@@ -70,7 +70,7 @@ func main() {
 	}
 
 	log.Println("Starting razvhost", version)
-	cfg := razvhost.ServerConfig{
+	cfg := server.ServerConfig{
 		ConfigFile:        ConfigFile,
 		CertsDir:          CertsDir,
 		NoCert:            NoCert,
@@ -80,7 +80,7 @@ func main() {
 		ExtraHeaders:      serverHeader,
 		PHPAddr:           PHPAddr,
 	}
-	srv := razvhost.NewServer(cfg)
+	srv := server.NewServer(cfg)
 	if len(DebugAddr) > 0 {
 		go func() {
 			if err := srv.Debug(DebugAddr); err != nil {
