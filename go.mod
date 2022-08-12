@@ -10,6 +10,7 @@ require (
 	github.com/hpcloud/tail v1.0.0
 	github.com/jszwec/s3fs v0.3.2
 	github.com/mssola/user_agent v0.5.3
+	github.com/pkg/sftp v1.13.5
 	github.com/yookoala/gofast v0.6.0
 	golang.org/x/crypto v0.0.0-20220722155217-630584e8d5aa
 	golang.org/x/net v0.0.0-20220725212005-46097bf591d3
@@ -33,6 +34,7 @@ require (
 	github.com/huandu/xstrings v1.3.1 // indirect
 	github.com/imdario/mergo v0.3.12 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
+	github.com/kr/fs v0.1.0 // indirect
 	github.com/mitchellh/copystructure v1.0.0 // indirect
 	github.com/mitchellh/reflectwalk v1.0.0 // indirect
 	github.com/moby/sys/mount v0.3.3 // indirect

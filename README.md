@@ -6,7 +6,8 @@ Virtual hosting/reverse proxy with TLS termination and automatic certificate man
   * Reverse proxy
   * Redirect
   * File and directory hosting
-  * Reading public S3 buckets
+  * Reading S3 buckets
+  * Reading SFTP directories
   * PHP hosting (requires php-fpm)
   * Go WebAssembly hosting
   * Tailing log files
@@ -32,7 +33,9 @@ example.com alias.com {{env "ALIAS"}} -> http://localhost:8080
 example.com/*/files -> file:///var/www/public/
 loadbalance.com -> http://localhost:8081 http://localhost:8082
 *.redirect.com -> redirect://github.com/razzie/razvhost
-mybucket.com -> s3://mybucket/prefix?region=eu-central-1
+public-bucket.com -> s3://public-bucket/prefix?region=eu-central-1
+private-bucket.com -> s3://key:secret@private-bucket/prefix?region=eu-central-1
+mysftp.com -> sftp://user:pass@sftphost.com/dir
 phpexample.com -> php:///var/www/index.php
 phpexample2.com -> php:///var/www/mysite/
 golang-project.com -> go-wasm:///path/to/build.wasm
