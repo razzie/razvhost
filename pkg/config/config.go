@@ -241,7 +241,7 @@ type configEntries []ConfigEntry
 
 func (entries configEntries) contains(other ConfigEntry) bool {
 	for _, entry := range entries {
-		if entry.Hostname == other.Hostname && entry.Target == other.Target {
+		if entry.Hostname == other.Hostname && entry.Target.String() == other.Target.String() {
 			return true
 		}
 	}
