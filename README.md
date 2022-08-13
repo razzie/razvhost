@@ -52,7 +52,7 @@ make
 ```
 or use the **go** tool:
 ```Shell
-go get github.com/razzie/razvhost
+go install github.com/razzie/razvhost/cmd/razvhost@latest
 ```
 
 ## Run
