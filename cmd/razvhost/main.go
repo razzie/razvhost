@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -39,6 +40,7 @@ var defaultDiscardHeaders = []string{
 }
 
 func init() {
+	showVersion := flag.Bool("version", false, "Show version")
 	flag.StringVar(&ConfigFile, "cfg", "config", "Config file")
 	flag.StringVar(&CertsDir, "certs", "certs", "Directory to store certificates in")
 	flag.BoolVar(&NoCert, "nocert", false, "Disable HTTPS and certificate handling")
@@ -49,6 +51,15 @@ func init() {
 	flag.StringVar(&PHPAddr, "php-addr", "unix:///var/run/php/php-fpm.sock", "PHP CGI address")
 	flag.StringVar(&DebugAddr, "debug", "", "Debug listener address, where hostname is the first part of the URL")
 	flag.Parse()
+
+	if *showVersion {
+		if len(version) > 0 {
+			fmt.Println("Version:", version)
+		} else {
+			fmt.Println("Unknown version")
+		}
+		os.Exit(0)
+	}
 
 	log.SetOutput(os.Stdout)
 }
