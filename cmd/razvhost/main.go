@@ -100,7 +100,7 @@ func main() {
 		}()
 	}
 	go func() {
-		if err := srv.Shutdown(); err != nil {
+		if err := srv.Serve(); err != nil {
 			log.Fatal(err)
 		}
 	}()
