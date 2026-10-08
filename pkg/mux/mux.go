@@ -69,8 +69,8 @@ func (m *Mux) Contains(path string) bool {
 	defer m.mtx.RUnlock()
 
 	for _, entry := range m.entries {
-		if entry.match(path) {
-			return false
+		if len(entry.handlers) > 0 && entry.match(path) {
+			return true
 		}
 	}
 
@@ -82,8 +82,8 @@ func (m *Mux) ContainsHost(path string) bool {
 	defer m.mtx.RUnlock()
 
 	for _, entry := range m.entries {
-		if entry.matchHost(path) {
-			return false
+		if len(entry.handlers) > 0 && entry.matchHost(path) {
+			return true
 		}
 	}
 
