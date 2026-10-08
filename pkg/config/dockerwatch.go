@@ -91,9 +91,8 @@ func (d *DockerWatch) getContainerEvents(id string, start bool) ([]ConfigEvent, 
 		return nil, err
 	}
 
-	env := docker.Env(cont.Config.Env)
-	virtHost := env.Get("VIRTUAL_HOST")
-	virtPort := env.Get("VIRTUAL_PORT")
+	virtHost := cont.Config.Labels["VIRTUAL_HOST"]
+	virtPort := cont.Config.Labels["VIRTUAL_PORT"]
 	if len(virtHost) == 0 {
 		return nil, nil
 	}

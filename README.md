@@ -18,7 +18,7 @@ Virtual hosting/reverse proxy with TLS termination and automatic certificate man
 * Supports all kinds of combinations of routes and target paths
 * Supports [sprig](https://masterminds.github.io/sprig/) templates
 * Load balancing
-* Watching docker containers with VIRTUAL_HOST and VIRTUAL_PORT environment variables
+* Watching Docker containers with VIRTUAL_HOST and VIRTUAL_PORT labels
 * Configurable header discarding
 * Request logging
 
@@ -42,6 +42,38 @@ golang-project.com -> go-wasm:///path/to/build.wasm
 kernel-logs-new.net -> tail-new:///var/log/kern.log
 kernel-logs-all.net -> tail:///var/log/kern.log
 ```
+
+### Docker discovery
+
+Run razvhost with `-docker` to discover running containers and watch for container
+start and stop events. Set the `VIRTUAL_HOST` label on each container to a
+space-separated list of hostnames. The optional `VIRTUAL_PORT` label selects the
+container port and defaults to `8080`. That port must be published on the Docker
+host; razvhost connects to its published port on `localhost`.
+
+For example, in Docker Compose:
+
+```yaml
+services:
+  web:
+    image: nginx:alpine
+    labels:
+      VIRTUAL_HOST: "example.com alias.com"
+      VIRTUAL_PORT: "80"
+    ports:
+      - "127.0.0.1:8080:80"
+```
+
+The equivalent Docker command is:
+
+```sh
+docker run -d --label "VIRTUAL_HOST=example.com alias.com" \
+  --label VIRTUAL_PORT=80 -p 127.0.0.1:8080:80 nginx:alpine
+```
+
+For existing deployments, move `VIRTUAL_HOST` and `VIRTUAL_PORT` from environment
+variables to labels and recreate the containers. Container environment variables
+are no longer used for Docker discovery.
 
 ## Build
 You can either check out the git repo and build:
@@ -72,7 +104,7 @@ Usage of ./razvhost:
   -discard-headers string
         Comma separated list of http headers to discard
   -docker
-        Watch Docker events to find containers with VIRTUAL_HOST
+        Watch Docker events to find containers with the VIRTUAL_HOST label
   -http2
         Enable HTTP2
   -no-server-header

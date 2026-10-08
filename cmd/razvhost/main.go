@@ -45,7 +45,7 @@ func init() {
 	flag.StringVar(&CertsDir, "certs", "certs", "Directory to store certificates in")
 	flag.BoolVar(&NoCert, "nocert", false, "Disable HTTPS and certificate handling")
 	flag.BoolVar(&NoServerHeader, "no-server-header", false, "Disable 'Server: razvhost/<version>' header in responses")
-	flag.BoolVar(&WatchDockerEvents, "docker", false, "Watch Docker events to find containers with VIRTUAL_HOST")
+	flag.BoolVar(&WatchDockerEvents, "docker", false, "Watch Docker events to find containers with the VIRTUAL_HOST label")
 	flag.BoolVar(&EnableHTTP2, "http2", false, "Enable HTTP2")
 	flag.StringVar(&DiscardHeaders, "discard-headers", "", "Comma separated list of http headers to discard")
 	flag.StringVar(&PHPAddr, "php-addr", "unix:///var/run/php/php-fpm.sock", "PHP CGI address")
