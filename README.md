@@ -43,6 +43,10 @@ kernel-logs-new.net -> tail-new:///var/log/kern.log
 kernel-logs-all.net -> tail:///var/log/kern.log
 ```
 
+Go WebAssembly hosting includes the Go 1.27.0 JavaScript runtime. Compile hosted
+`.wasm` files with Go 1.27 (`GOOS=js GOARCH=wasm go build`); the compiler and
+JavaScript runtime must use the same Go release series.
+
 ### Docker discovery
 
 Run razvhost with `-docker` to discover running containers and watch for container
